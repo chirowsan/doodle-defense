@@ -229,7 +229,7 @@
     }
     #hint.on { display: block; }
     #dock {
-      flex: 0 0 148px;
+      flex: 0 0 176px;
       width: 100%;
       z-index: 3;
       pointer-events: auto;
@@ -263,7 +263,7 @@
       border: 3px solid var(--ink);
       border-radius: 16px;
       background: #fff8e6;
-      min-height: 74px; padding: 2px 0;
+      min-height: 70px; padding: 2px 0 3px;
       cursor: pointer;
       font-family: inherit;
       color: var(--ink);
@@ -284,7 +284,20 @@
     .tool.eraser .swatch { width: 26px; height: 20px; border-radius: 7px 9px 5px 7px; background: var(--rubber); }
     .tool.yellow .swatch { background: var(--yellow); }
     .tool.purple .swatch { background: var(--purple); }
-    .tool .nm { font-size: 10px; font-weight: 800; }
+    .tool .nm { font-size: 9px; font-weight: 800; line-height: 1; }
+    .tool .fx { font-size: 8px; font-weight: 700; color: #6a5544; line-height: 1; letter-spacing: -0.2px; }
+    #crayon-legend {
+      margin: 0 2px 6px;
+      background: #fff8e6;
+      border: 2px solid var(--ink);
+      border-radius: 10px;
+      padding: 4px 8px;
+      font-size: 11px;
+      font-weight: 800;
+      line-height: 1.25;
+      text-align: left;
+      min-height: 22px;
+    }
     .tool.lock { opacity: .45; }
     .tool:disabled { opacity: .45; cursor: default; }
     .tool.sel { background: #fff3b0; transform: translateY(-4px); }
@@ -363,6 +376,36 @@
     #star-rules li[data-ok="1"] { color: #8a6a10; }
     #star-rules li[data-ok="0"] { color: #8a7a68; }
     #star-rules[hidden] { display: none; }
+
+    #callout {
+      position: absolute; left: 10px; right: 10px; top: 10px; z-index: 6;
+      background: #fff8e6; border: 3px solid var(--ink); border-radius: 16px;
+      padding: 8px 10px 8px 12px;
+      box-shadow: 3px 4px 0 rgba(58,42,34,.25);
+      display: flex; align-items: flex-start; gap: 8px;
+      pointer-events: auto;
+    }
+    #callout[hidden] { display: none; }
+    #callout-text { flex: 1; font-size: 13px; font-weight: 800; line-height: 1.3; text-align: left; }
+    #callout .btn { width: auto; margin: 0; padding: 7px 10px; font-size: 13px; flex: 0 0 auto; box-shadow: 2px 2px 0 #3a2a22; }
+    #screen-how { overflow-y: auto; align-items: stretch; pointer-events: auto; -webkit-overflow-scrolling: touch; }
+    #screen-how .panel { align-self: center; margin-top: 22px; margin-bottom: 18px; max-height: calc(100% - 40px); display: flex; flex-direction: column; }
+    .codex { text-align: left; overflow-y: auto; flex: 1; min-height: 0; -webkit-overflow-scrolling: touch; background: #fff; border-radius: 14px; padding: 10px 12px; margin: 0 0 12px; border: 2px dashed #d2c09a; font-weight: 650; font-size: 13px; line-height: 1.35; }
+    .codex h3 { margin: 10px 0 6px; font-size: 15px; color: #c74538; }
+    .codex h3:first-child { margin-top: 0; }
+    .codex ul { list-style: none; margin: 0; padding: 0; }
+    .codex li { margin: 0 0 7px; padding-left: 0; }
+    .codex .sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; border: 1.5px solid var(--ink); margin-right: 4px; vertical-align: -1px; }
+    .codex .sw.blue { background: var(--blue); }
+    .codex .sw.red { background: var(--red); }
+    .codex .sw.green { background: var(--green); }
+    .codex .sw.yellow { background: var(--yellow); }
+    .codex .sw.purple { background: var(--purple); }
+    .codex .sw.eraser { background: var(--rubber); }
+    #plan { align-items: stretch; }
+    #plan-text { font-size: 11px; max-height: 84px; overflow-y: auto; }
+    #plan-text .hint { color: #6a5544; font-weight: 700; }
+    #field-wrap.planning #hint { bottom: 98px; }
   </style>
 </head>
 <body>
@@ -381,7 +424,7 @@
 
       <section id="screen-levels" class="screen" data-testid="screen-levels">
         <h1 class="logo" style="font-size:34px;margin-top:28px">Pick a page</h1>
-        <div class="tag" id="levels-tag">Normal is on. Little kids can switch to Easy.</div>
+        <div class="tag" id="levels-tag">Normal is on. A tight ink budget, so plan each line.</div>
         <div id="level-list"></div>
         <button class="btn ghost" id="btn-levels-back" data-testid="btn-levels-back">Back</button>
       </section>
@@ -389,12 +432,46 @@
       <section id="screen-how" class="screen" data-testid="screen-how">
         <div class="panel">
           <h2>How to play</h2>
-          <div class="tiny">
-            <p><b>You draw the paths.</b> Before each wave you get a <b>scouting preview</b>: the dotted trails show where scribbles walk and what is coming. Draw, then press <b>Start wave</b>.</p>
-            <p>Your <b>ink budget</b> barely refills, so every line is a choice. Drawing during a wave costs extra. <b>Red</b> is fast but pricey, <b>blue</b> is cheap and slows, <b>green</b> vines wear down, <b>yellow Zap</b> fizzles out, <b>purple Blink</b> swaps the two ends.</p>
-            <p><b>Combos:</b> blue × red = splash, green × blue = bush, red × green = thorns. A <b>triangle</b> is a launch pad. A loop around a star grabs it.</p>
-            <p><b>Armored</b> ones shrug off tickles, <b>flyers</b> soar over lines, <b>healers</b> mend others, <b>eraser-bugs</b> eat lines, <b>hoppers</b> jump vines, <b>sneaky</b> ones hide until blue. Bosses change tactics.</p>
-            <p>Only 3 leaks and the page is smudged. Stars: clear it, keep 25% of your ink, and finish with no leaks and a combo. Clear Hard to unlock <b>Nightmare</b>.</p>
+          <div class="codex" data-testid="codex">
+            <p>You draw the paths. Before each wave, read the <b>scouting preview</b>, draw your plan, then press <b>Start wave</b>. Ink is a tight budget and barely refills. Drawing mid-wave costs extra. On Normal, three leaks lose the page.</p>
+            <h3 data-testid="codex-colors">Colors</h3>
+            <ul>
+              <li data-testid="codex-blue"><span class="sw blue"></span><b>Blue: slow.</b> A cheap line that slows monsters. Also reveals sneaky ones.</li>
+              <li data-testid="codex-red"><span class="sw red"></span><b>Red: tickle.</b> Doodles hatch, run the line, and poke monsters. Costs more ink, but they move fast.</li>
+              <li data-testid="codex-green"><span class="sw green"></span><b>Green: wall.</b> Blocks monsters. They will chew through it, and armored or boss ones break it faster. Hoppers jump over walls.</li>
+              <li data-testid="codex-yellow"><span class="sw yellow"></span><b>Zap: shock.</b> Zaps nearby ground monsters, then fizzles after a few hits. Unlock it by beating the first boss.</li>
+              <li data-testid="codex-purple"><span class="sw purple"></span><b>Blink: swap.</b> Anyone who touches an end swaps to the other end. Unlock it by beating the second boss.</li>
+              <li data-testid="codex-eraser"><span class="sw eraser"></span><b>Eraser.</b> Rub out a line and get a little ink back.</li>
+            </ul>
+            <h3 data-testid="codex-combos">Combos and shapes</h3>
+            <ul>
+              <li><b>Blue × red = splash burst.</b> Hurts everything nearby, even flyers and sneaky ones.</li>
+              <li><b>Red × green = thorns.</b> Hurts ground monsters standing in it. Best against armored ones.</li>
+              <li><b>Green × blue = bouncy bush.</b> A springy patch that helps your doodles.</li>
+              <li><b>Triangle = launch pad.</b> Doodles on it fly at nearby monsters. This is how you hit flyers (splashes work too).</li>
+              <li><b>A loop</b> around a star grabs it. Loops also make doodles walk in a circle as guards.</li>
+            </ul>
+            <h3 data-testid="codex-monsters">Monsters and counters</h3>
+            <ul>
+              <li><b>Scribble:</b> basic walker. Your doodles poke it.</li>
+              <li><b>Hopper:</b> jumps green walls. Use tickles, blue, or thorns.</li>
+              <li><b>Eraser-bug:</b> eats your lines. Give it a short decoy to chew.</li>
+              <li><b>Splitter:</b> becomes two when hurt. Keep hitting both.</li>
+              <li><b>Sneaky:</b> stays hidden until it touches blue, a puddle, or a splash.</li>
+              <li><b>Armored:</b> tickles barely work. Use thorns, Zap, a splash, or a launch pad.</li>
+              <li><b>Healer:</b> mends others. Pop it first with a splash or thorns.</li>
+              <li><b>Flyer:</b> soars over lines and walls. Use a triangle launch pad or a splash.</li>
+              <li><b>Bosses</b> (Big Smudge, Nibblewick, Hidey Storm) change tactics as they get hurt.</li>
+            </ul>
+            <h3 data-testid="codex-hazards">Page hazards</h3>
+            <ul>
+              <li><b>Puddle:</b> a line through it makes swimmers, and monsters slow down in the water.</li>
+              <li><b>Coffee stain:</b> drawing here costs double ink.</li>
+              <li><b>Ink blot:</b> a no-draw zone. Your line stops if it hits one.</li>
+              <li><b>Fold:</b> the folded part of the page cuts your line.</li>
+              <li><b>Wind:</b> pushes your line as you draw.</li>
+            </ul>
+            <p>Stars: clear the page, let nothing reach the house, and keep 35% of your ink after using a combo or launch pad. Clear Hard to unlock <b>Nightmare</b>.</p>
           </div>
           <button class="btn" id="btn-how-back" data-testid="btn-how-back">Got it</button>
         </div>
@@ -446,6 +523,10 @@
         <div id="field-wrap">
           <canvas id="field" width="390" height="620" data-testid="field"></canvas>
           <div id="hint" data-testid="hint"></div>
+          <div id="callout" data-testid="callout" hidden>
+            <div id="callout-text" data-testid="callout-text"></div>
+            <button class="btn" id="btn-callout-ok" data-testid="btn-callout-ok">Got it</button>
+          </div>
           <div id="plan" data-testid="plan-panel" hidden>
             <div id="plan-text" data-testid="plan-text"></div>
             <button class="btn" id="btn-start-wave" data-testid="btn-start-wave">Start wave</button>
@@ -461,13 +542,14 @@
             <div id="ink-label"><span id="ink-title" data-testid="ink-title">Ink budget</span><span id="ink-num" data-testid="ink-num">100</span></div>
             <div id="ink-bar"><div id="ink-fill" data-testid="ink-fill"></div></div>
           </div>
+          <div id="crayon-legend" data-testid="crayon-legend">Blue: slow — a cheap line that slows monsters</div>
           <div id="tools">
-            <button class="tool blue sel" data-tool="blue" data-testid="tool-blue"><span class="swatch"></span><span class="nm">Blue</span></button>
-            <button class="tool red" data-tool="red" data-testid="tool-red"><span class="swatch"></span><span class="nm">Red</span></button>
-            <button class="tool green" data-tool="green" data-testid="tool-green"><span class="swatch"></span><span class="nm">Green</span></button>
-            <button class="tool yellow lock" data-tool="yellow" data-testid="tool-yellow"><span class="swatch"></span><span class="nm">Zap</span></button>
-            <button class="tool purple lock" data-tool="purple" data-testid="tool-purple"><span class="swatch"></span><span class="nm">Blink</span></button>
-            <button class="tool eraser" data-tool="eraser" data-testid="tool-eraser"><span class="swatch"></span><span class="nm">Eraser</span></button>
+            <button class="tool blue sel" data-tool="blue" data-testid="tool-blue"><span class="swatch"></span><span class="nm">Blue</span><span class="fx">Slow</span></button>
+            <button class="tool red" data-tool="red" data-testid="tool-red"><span class="swatch"></span><span class="nm">Red</span><span class="fx">Tickle</span></button>
+            <button class="tool green" data-tool="green" data-testid="tool-green"><span class="swatch"></span><span class="nm">Green</span><span class="fx">Wall</span></button>
+            <button class="tool yellow lock" data-tool="yellow" data-testid="tool-yellow"><span class="swatch"></span><span class="nm">Zap</span><span class="fx">Shock</span></button>
+            <button class="tool purple lock" data-tool="purple" data-testid="tool-purple"><span class="swatch"></span><span class="nm">Blink</span><span class="fx">Swap</span></button>
+            <button class="tool eraser" data-tool="eraser" data-testid="tool-eraser"><span class="swatch"></span><span class="nm">Eraser</span><span class="fx">Erase</span></button>
           </div>
         </div>
       </section>
@@ -477,6 +559,7 @@
           <h2>Paused</h2>
           <p>The crayons are taking a rest.</p>
           <button class="btn" id="btn-resume" data-testid="btn-resume">Keep drawing</button>
+          <button class="btn mint" id="btn-pause-how" data-testid="btn-pause-how">How to play</button>
           <button class="btn ghost" id="btn-quit" data-testid="btn-quit">Back to pages</button>
         </div>
       </div>

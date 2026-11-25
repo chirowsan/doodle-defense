@@ -27,6 +27,7 @@
     endlessBest: 0,
     nightmare: false,
     settings: { diff: "normal", battery: "auto", sfx: true, music: true },
+    seenTips: {},
   };
 
   var save = loadSave();
@@ -41,6 +42,10 @@
   var menuT = 0;
   var paperTex = null;
   var scratchAcc = 0;
+  var howReturn = "menu";
+  var callout = null;
+  var calloutQueue = [];
+  var calloutUntil = 0;
 
   function loadSave() {
     try {
@@ -76,6 +81,7 @@
       } else if (migrated) {
         out.settings.diff = "normal";
       }
+      if (s.seenTips && typeof s.seenTips === "object") out.seenTips = s.seenTips;
       return out;
     } catch (e) {
       return jsonCopy(DEFAULT_SAVE);
@@ -351,7 +357,55 @@
     sneaky: "Sneaky ones hide. Lay a blue line (or a splash) to reveal them.",
     eater: "Eraser-bugs eat lines. Give them a small decoy line to chew.",
     jumper: "Hoppers leap over vines. Loops, blue and thorns still work.",
-    splitter: "Splitters become two. Keep damage coming so both pop.",
+    splitter: "Splitters become two. Keep hitting both.",
+    scribble: "Scribbles walk the trails. Your doodles poke them.",
+    boss: "Bosses change tactics as they get hurt. Watch the hints.",
+    adapt: "Copycats change to counter the colors you already drew. Mix your tools.",
+  };
+  var KIND_SCOUT = {
+    scribble: "poked by your doodles",
+    jumper: "jumps green walls — use tickles, blue, or thorns",
+    eater: "eats your lines — give it a short decoy",
+    splitter: "splits in two — keep hitting both",
+    sneaky: "hides until it touches blue or a splash",
+    armored: "tickles barely work — use thorns, Zap, or a launch pad",
+    healer: "heals others — pop it first",
+    flyer: "flies over lines — use a triangle launch pad or a splash",
+    adapt: "counters your colors — mix your tools",
+  };
+  var BOSS_SCOUT = {
+    smudge: "armored, then calls helpers, then rages — use thorns and blue",
+    nibble: "chews your lines, then more of them — use decoys and thorns",
+    hidey: "hides, then calls flyers and a healer — use blue and a launch pad",
+  };
+  var COLOR_LEGEND = {
+    blue:   { short: "Slow",   line: "Blue: slow — a cheap line that slows monsters" },
+    red:    { short: "Tickle", line: "Red: tickle — doodles hatch and poke monsters" },
+    green:  { short: "Wall",   line: "Green: wall — blocks monsters; they will chew through it" },
+    yellow: { short: "Shock",  line: "Zap: shock — zaps nearby monsters, then fizzles" },
+    purple: { short: "Swap",   line: "Blink: swap — anyone who touches an end swaps to the other end" },
+    eraser: { short: "Erase",  line: "Eraser: rub out a line and get a little ink back" },
+  };
+  var COLOR_TEACH = {
+    blue: "Blue is a slow line. It's cheap, and monsters that walk on it crawl. It also reveals sneaky ones.",
+    red: "Red is a tickle line. Doodles hatch on it, run fast, and poke monsters they touch.",
+    green: "Green is a wall. It blocks monsters, but they will chew through it. Armored ones break walls faster. Hoppers jump over them.",
+    yellow: "Zap shocks nearby ground monsters, then the line fizzles after a few hits.",
+    purple: "Blink swaps anyone who touches one end of the line to the other end.",
+    eraser: "The eraser rubs out a line and gives you a little ink back.",
+  };
+  var COMBO_TEACH = {
+    splash: "Splash burst (blue × red): hurts everything nearby, even flyers and sneaky ones.",
+    thorn: "Thorns (red × green): hurt ground monsters standing in them. Best against armor.",
+    bush: "Bouncy bush (green × blue): a springy patch that helps your doodles.",
+    pad: "Launch pad (a triangle): doodles on it fly at nearby monsters. That's how you hit flyers.",
+  };
+  var HAZARD_TEACH = {
+    puddle: "Puddle: draw through it to make swimmers. Monsters also slow down in the water.",
+    stain: "Coffee stain: drawing here costs double ink.",
+    blot: "Ink blot: a no-draw zone. Your line stops if it hits one.",
+    fold: "Fold: the folded part of the page cuts your line.",
+    wind: "Wind: it pushes your line as you draw.",
   };
   var rngState = 1;
   function seedRng(s) { rngState = (s >>> 0) || 1; }
@@ -383,7 +437,7 @@
       waveClock: 0, pending: [], wave: 0, nextWaveAt: 0, autoStart: !!o.autoStart,
       score: 0, leaks: 0, houseHurt: false, usedCombo: false, zapT: 0,
       ended: null, endReason: "", endTimer: 0, rating: 0, rules: null,
-      paused: false, firstDraw: false,
+      paused: false, firstDraw: false, maxStill: 0,
     };
   }
 
@@ -423,11 +477,16 @@
     });
     hint = lv.hint || "";
     hintUntil = 8;
+    callout = null;
+    calloutQueue = [];
+    var cEl = document.getElementById("callout");
+    if (cEl) cEl.hidden = true;
     showScreen("play");
     closeModal("modal-pause");
     closeModal("modal-end");
     syncTools();
     enterPlanIfNeeded();
+    teachColor(play.tool);
     updateHud();
     if (window.DDAudio) window.DDAudio.unlock();
   }
@@ -473,9 +532,14 @@
     });
     return order.map(function (k) {
       var n = counts[k];
-      var nm = k.indexOf("boss:") === 0 ? BOSS_STATS[k.slice(5)].name : (KIND_NAME[k] || k);
-      if (n > 1 && k.indexOf("boss:") !== 0) nm = nm.replace(/ug$/, "ug") + "s";
-      return { key: k, n: n, name: nm };
+      var isBoss = k.indexOf("boss:") === 0;
+      var nm = isBoss ? BOSS_STATS[k.slice(5)].name : (KIND_NAME[k] || k);
+      if (n > 1 && !isBoss) {
+        if (nm === "Eraser-bug") nm = "Eraser-bugs";
+        else if (nm.slice(-1) !== "s") nm = nm + "s";
+      }
+      var hint = isBoss ? (BOSS_SCOUT[k.slice(5)] || "changes tactics as it is hurt") : (KIND_SCOUT[k] || "");
+      return { key: k, n: n, name: nm, hint: hint };
     });
   }
   function enterPlanIfNeeded() {
@@ -487,10 +551,13 @@
       var k = it.kind === "adapt" ? null : it.kind;
       if (k && KIND_TIP[k] && tipKinds.indexOf(k) < 0) tipKinds.push(k);
     });
-    hint = tipKinds.length ? KIND_TIP[tipKinds[tipKinds.length > 1 ? 1 : 0]] : "Plan your lines, then press Start.";
-    if (tipKinds.length > 1 && play.waveIdx === 0) hint = KIND_TIP[tipKinds[0]];
-    if (items.some(function (it) { return it.kind === "boss"; })) hint = "Boss wave! It changes tactics as it gets hurt.";
-    hintUntil = play.t + 99999;
+    hint = "Plan your lines, then press Start.";
+    hintUntil = play.t + 8;
+    items.forEach(function (it) {
+      var k = it.kind === "boss" ? "boss" : it.kind;
+      if (k) teach("kind:" + (it.boss || k), kindTeachText(it.kind, it.boss));
+    });
+    teachLevelHazards();
   }
   function startWave() {
     if (!play || play.phase !== "plan" || play.ended) return false;
@@ -598,10 +665,64 @@
       b.classList.toggle("lock", !unlocked);
       if (tool === "yellow" || tool === "purple") b.disabled = !unlocked;
     });
+    if (play) updateLegend(play.tool);
   }
   function showHint(msg, dur) {
     hint = msg;
     hintUntil = (play ? play.t : 0) + (dur || 2.5);
+  }
+  function kindTeachText(kind, boss) {
+    if (kind === "boss") return (boss && BOSS_STATS[boss] ? BOSS_STATS[boss].name : "A boss") + ": " + (BOSS_SCOUT[boss] || KIND_TIP.boss);
+    return KIND_TIP[kind] || KIND_SCOUT[kind] || "";
+  }
+  function teach(key, text) {
+    if (!key || !text) return;
+    if (!save.seenTips) save.seenTips = {};
+    if (save.seenTips[key]) return;
+    save.seenTips[key] = true;
+    persist();
+    calloutQueue.push({ key: key, text: text });
+    if (!callout) showNextCallout();
+  }
+  function showNextCallout() {
+    var el = document.getElementById("callout");
+    var tx = document.getElementById("callout-text");
+    if (!el || !tx) return;
+    if (calloutQueue.length === 0) {
+      callout = null;
+      el.hidden = true;
+      return;
+    }
+    callout = calloutQueue.shift();
+    tx.textContent = callout.text;
+    el.hidden = false;
+    calloutUntil = (play ? play.t : 0) + 6;
+  }
+  function dismissCallout() {
+    callout = null;
+    showNextCallout();
+  }
+  function tickCallout() {
+    if (callout && play && play.t >= calloutUntil) dismissCallout();
+  }
+  function teachLevelHazards() {
+    if (!play) return;
+    if (play.puddles && play.puddles.length) teach("hazard:puddle", HAZARD_TEACH.puddle);
+    if (play.stains && play.stains.length) teach("hazard:stain", HAZARD_TEACH.stain);
+    if (play.blots && play.blots.length) teach("hazard:blot", HAZARD_TEACH.blot);
+    if (play.fold) teach("hazard:fold", HAZARD_TEACH.fold);
+    if (play.wind) teach("hazard:wind", HAZARD_TEACH.wind);
+  }
+  function teachColor(tool) {
+    if (COLOR_TEACH[tool]) teach("color:" + tool, COLOR_TEACH[tool]);
+    updateLegend(tool);
+  }
+  function updateLegend(tool) {
+    var el = document.getElementById("crayon-legend");
+    if (!el) return;
+    var id = tool || (play && play.tool) || "blue";
+    var row = COLOR_LEGEND[id];
+    el.textContent = row ? row.line : "";
   }
   var planKey = "";
   function updateHud() {
@@ -645,6 +766,8 @@
     else if (play.goal === "stars") wl.textContent = "Collect " + play.starsNeed + " stars";
     else wl.textContent = "Protect the house";
     updatePlanPanel();
+    updateLegend(play.tool);
+    tickCallout();
     var hintEl = document.getElementById("hint");
     if (hint && play.t < hintUntil && !play.ended && !play.paused) {
       hintEl.textContent = hint;
@@ -665,8 +788,10 @@
     if (key === planKey) return;
     planKey = key;
     var txt = document.getElementById("plan-text");
-    txt.innerHTML = "<b>Wave " + (play.waveIdx + 1) + " of " + play.waves.length + " incoming:</b> " +
-      sum.map(function (s) { return s.n + "× " + s.name; }).join(" · ");
+    txt.innerHTML = "<b>Wave " + (play.waveIdx + 1) + " of " + play.waves.length + " incoming</b>" +
+      sum.map(function (s) {
+        return "<div>" + s.n + "× " + s.name + (s.hint ? ' <span class="hint">— ' + s.hint + "</span>" : "") + "</div>";
+      }).join("");
   }
 
   /* ---------- drawing input ---------- */
@@ -815,7 +940,7 @@
     var st = {
       id: seq++, color: color, pts: pts, closed: closed, triangle: tri,
       throughPuddle: through, length: len,
-      hp: color === "green" ? 20 + len * 0.3 : 0,
+      hp: color === "green" ? 28 + len * 0.35 : 0, maxHp: color === "green" ? 28 + len * 0.35 : 0,
       charges: color === "yellow" ? 8 : 0,
     };
     play.strokes.push(st);
@@ -824,10 +949,12 @@
     if (through) sfx("splash");
     hatchCritters(st);
     if (closed) collectStarsInLoop(st);
+    teachColor(color);
     if (tri) {
       var cen = triangleCentroid(st.pts);
       play.pads.push({ id: st.id, pts: st.pts.slice(), x: cen.x, y: cen.y, cd: 0 });
       play.usedCombo = true;
+      teach("combo:pad", COMBO_TEACH.pad);
       showHint("Launch pad! Critters on it fly at nearby scribbles.", 2.4);
       sfx("launch");
     } else if (closed) showHint("A loop! They'll walk in a circle.", 2.4);
@@ -916,9 +1043,20 @@
         puff(c.x, c.y, c.kind === "splash" ? "#6eb7e8" : c.kind === "bush" ? "#7bc87a" : "#e05645", 8);
         if (play.endless) play.score += 15;
       });
-      if (fresh[0].kind === "splash") showHint("Splash burst! Hurts everything nearby, even flyers.", 2.4);
-      else if (fresh[0].kind === "bush") showHint("Bouncy bush!", 2);
-      else showHint("Thorn patch! Hurts ground scribbles that stand in it.", 2.4);
+      if (fresh[0].kind === "splash") { teach("combo:splash", COMBO_TEACH.splash); showHint("Splash burst! Hurts everything nearby, even flyers.", 2.4); }
+      else if (fresh[0].kind === "bush") { teach("combo:bush", COMBO_TEACH.bush); showHint("Bouncy bush!", 2); }
+      else { teach("combo:thorn", COMBO_TEACH.thorn); showHint("Thorn patch! Hurts ground scribbles that stand in it.", 2.4); }
+      play.strokes.forEach(function (st) {
+        if (st.color !== "green") return;
+        var inCombo = play.combos.some(function (c) {
+          return (c.a === st.id || c.b === st.id) && (c.kind === "thorn" || c.kind === "bush");
+        });
+        if (inCombo && !st.reinforced) {
+          st.reinforced = true;
+          st.hp += 28;
+          st.maxHp = (st.maxHp || st.hp) + 28;
+        }
+      });
     }
     play.pads = play.pads.filter(function (p) {
       return play.strokes.some(function (s) { return s.id === p.id; });
@@ -1090,12 +1228,14 @@
       chew: 0, chewTarget: null,
       chewsLeft: (kind === "eater" || boss === "nibble") ? 1 : 0,
       hasSplit: !!opts.tiny, stealthed: kind === "sneaky", stealthT: 0, summonT: 0,
+      breaking: false, breakSt: null, breakT: 0, breakPulse: 0, detour: null, detourT: 0, stillT: 0,
       tiny: !!opts.tiny, scale: big, phase: 0, armor: false, teleCd: 0,
       path: path, pi: opts.pi != null ? opts.pi : 1, lane: opts.lane != null ? opts.lane : -1,
       canHop: kind === "jumper" || boss === "hidey", chewTime: boss === "nibble" ? 1.5 : 1.3, leaked: false,
     };
     play.monsters.push(m);
     if (kind === "boss") enterBossPhase(m, 1);
+    if (!opts.tiny) teach("kind:" + (boss || kind), kindTeachText(kind, boss));
     puff(m.x, m.y, "#6a6570", 4);
     return m;
   }
@@ -1268,6 +1408,156 @@
     return false;
   }
 
+  function findDetour(m, tx, ty) {
+    var CS = 22;
+    var fs = fieldSize();
+    var W = Math.ceil(fs.w / CS), H = Math.ceil(fs.h / CS);
+    function cellOk(cx, cy) {
+      if (cx < 0 || cy < 0 || cx >= W || cy >= H) return false;
+      return !vineHit(cx * CS + CS / 2, cy * CS + CS / 2, 14);
+    }
+    var sx = Math.max(0, Math.min(W - 1, Math.floor(m.x / CS)));
+    var sy = Math.max(0, Math.min(H - 1, Math.floor(m.y / CS)));
+    var gx = Math.max(0, Math.min(W - 1, Math.floor(tx / CS)));
+    var gy = Math.max(0, Math.min(H - 1, Math.floor(ty / CS)));
+    if (!cellOk(gx, gy)) {
+      var best = null, bd = 1e9;
+      for (var oy = -3; oy <= 3; oy++) for (var ox = -3; ox <= 3; ox++) {
+        var cx = gx + ox, cy = gy + oy;
+        if (!cellOk(cx, cy)) continue;
+        var d = Math.abs(ox) + Math.abs(oy);
+        if (d < bd) { bd = d; best = { x: cx, y: cy }; }
+      }
+      if (!best) return null;
+      gx = best.x; gy = best.y;
+    }
+    if (!cellOk(sx, sy)) {
+      var sbest = null, sd = 1e9;
+      for (var i = 0; i < 16; i++) {
+        var a = i * Math.PI / 8;
+        var cx = Math.round((m.x + Math.cos(a) * 24) / CS);
+        var cy = Math.round((m.y + Math.sin(a) * 24) / CS);
+        if (!cellOk(cx, cy)) continue;
+        var d2 = Math.hypot(cx - sx, cy - sy);
+        if (d2 < sd) { sd = d2; sbest = { x: cx, y: cy }; }
+      }
+      if (!sbest) return null;
+      sx = sbest.x; sy = sbest.y;
+    }
+    var key = function (x, y) { return x + y * 128; };
+    var came = {}, seen = {};
+    var q = [{ x: sx, y: sy, d: 0 }];
+    seen[key(sx, sy)] = 1;
+    var found = null;
+    var dirs = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+    for (var qi = 0; qi < q.length && qi < 520; qi++) {
+      var c = q[qi];
+      if (c.x === gx && c.y === gy) { found = c; break; }
+      for (var k = 0; k < dirs.length; k++) {
+        var nx = c.x + dirs[k][0], ny = c.y + dirs[k][1];
+        var kk = key(nx, ny);
+        if (seen[kk] || !cellOk(nx, ny)) continue;
+        if (dirs[k][0] && dirs[k][1] && (!cellOk(c.x + dirs[k][0], c.y) || !cellOk(c.x, c.y + dirs[k][1]))) continue;
+        seen[kk] = 1;
+        came[kk] = c;
+        q.push({ x: nx, y: ny, d: c.d + 1 });
+      }
+    }
+    if (!found) return null;
+    var cur = found, path = [cur];
+    while (!(cur.x === sx && cur.y === sy)) {
+      cur = came[key(cur.x, cur.y)];
+      if (!cur) break;
+      path.push(cur);
+    }
+    path.reverse();
+    var wp = path[Math.min(4, path.length - 1)];
+    return { x: wp.x * CS + CS / 2, y: wp.y * CS + CS / 2, pathLen: found.d * CS };
+  }
+
+  function breakRate(m) {
+    var rate = 16;
+    if (m.kind === "armored") rate = 34;
+    if (m.kind === "boss") rate = 46;
+    return rate;
+  }
+
+  function monsterUnderFire(m) {
+    if (!play) return false;
+    for (var i = 0; i < play.combos.length; i++) {
+      var c = play.combos[i];
+      if ((c.kind === "thorn" && dist(m, c) < 32) || (c.kind === "splash" && dist(m, c) < 56)) return true;
+    }
+    return false;
+  }
+  function shouldChewWall(m, st) {
+    return !!(st && (st.reinforced || monsterUnderFire(m)));
+  }
+
+  function beginBreak(m, wall) {
+    if (!wall || !wall.st) return;
+    m.breaking = true;
+    m.breakSt = wall.st;
+    m.breakHx = wall.x;
+    m.breakHy = wall.y;
+    m.breakAng = Math.atan2(wall.y - m.y, wall.x - m.x);
+  }
+
+  function tickBreak(m, dt) {
+    var st = m.breakSt;
+    if (!st || play.strokes.indexOf(st) < 0 || st.hp <= 0) {
+      m.breaking = false;
+      m.breakSt = null;
+      return false;
+    }
+    var hit = nearStroke(st, m.x, m.y, 22);
+    if (hit) { m.breakHx = hit.x; m.breakHy = hit.y; }
+    st.hp -= breakRate(m) * dt;
+    m.breakT = (m.breakT || 0) + dt;
+    m.breakPulse = (m.breakPulse || 0) + dt;
+    if (m.breakPulse >= 0.7) {
+      m.breakPulse = 0;
+      floatText(m.breakHx || m.x, (m.breakHy || m.y) - 12, "Breaking!", "#226c36");
+      sfx("scratch");
+      puff(m.breakHx || m.x, m.breakHy || m.y, "#5fbf6e", 4);
+    }
+    if (st.hp <= 0) {
+      floatText(m.breakHx || m.x, (m.breakHy || m.y) - 8, "Snap!", "#226c36");
+      sfx("erase");
+      eraseStroke(st);
+      m.breaking = false;
+      m.breakSt = null;
+    }
+    return true;
+  }
+
+  function noteMotion(m, dt, busy) {
+    if (m._px == null) { m._px = m.x; m._py = m.y; m.stillT = 0; }
+    var moved = Math.hypot(m.x - m._px, m.y - m._py);
+    m._accMove = (m._accMove || 0) + moved;
+    m._accT = (m._accT || 0) + dt;
+    m._px = m.x;
+    m._py = m.y;
+    if (m._accT >= 0.35) {
+      if (m._accMove < 5 && !busy) m.stillT = (m.stillT || 0) + m._accT;
+      else m.stillT = 0;
+      m._accMove = 0;
+      m._accT = 0;
+    }
+    play.maxStill = Math.max(play.maxStill || 0, m.stillT || 0);
+  }
+
+  function pathHitsVine(x1, y1, x2, y2) {
+    var d = Math.hypot(x2 - x1, y2 - y1);
+    if (d < 1) return !!vineHit(x2, y2, 13);
+    var n = Math.max(2, Math.ceil(d / 14));
+    for (var i = 1; i <= n; i++) {
+      var t = i / n;
+      if (vineHit(x1 + (x2 - x1) * t, y1 + (y2 - y1) * t, 13)) return true;
+    }
+    return false;
+  }
+
   function vineAhead(m, dx, dy) {
     var l = Math.sqrt(dx * dx + dy * dy) || 1;
     return vineHit(m.x + dx / l * 30, m.y + dy / l * 30, 14);
@@ -1335,33 +1625,85 @@
         }
       }
       if (m.hopping > 0) { m.hopping -= dt; spd *= 1.55; }
+      // Walk around a wall if a gap exists; otherwise chew through it.
+      if (m.breaking) m.detour = null;
+      if (m.kind !== "flyer" && m.hopping <= 0 && m.detour) {
+        if (dist(m, m.detour) < 18 || !pathHitsVine(m.x, m.y, target.x, target.y)) {
+          if (pathHitsVine(m.x, m.y, target.x, target.y)) {
+            m.detour = findDetour(m, target.x, target.y);
+            m.detourT = 0.4;
+          } else {
+            m.detour = null;
+          }
+        }
+      }
+      if (m.kind !== "flyer" && m.hopping <= 0 && m.detour && !m.breaking) {
+        ddx = m.detour.x - m.x;
+        ddy = m.detour.y - m.y;
+        ang = Math.atan2(ddy, ddx);
+      }
       var vx = Math.cos(ang) * spd;
       var vy = Math.sin(ang) * spd;
       var nx = m.x + vx * dt;
       var ny = m.y + vy * dt;
       var wall = (m.hopping > 0 || m.kind === "flyer") ? null : vineHit(nx, ny, 13);
-      if (wall) {
-        m.x = wall.x + wall.nx * 14;
-        m.y = wall.y + wall.ny * 14;
-        var tx = -wall.ny, ty = wall.nx;
-        var s = (vx * tx + vy * ty);
-        s = s >= 0 ? 1 : -1;
-        m.x += tx * s * spd * dt * 0.85;
-        m.y += ty * s * spd * dt * 0.85;
-        // pushing on a vine wears it down
-        var vst = wall.st;
-        if (vst && vst.hp > 0) {
-          vst.hp -= 12 * dt * ((m.kind === "armored" || m.kind === "boss") ? 3 : 1);
-          if (vst.hp <= 0) {
-            floatText(wall.x, wall.y - 8, "Snap!", "#226c36");
-            sfx("erase");
-            eraseStroke(vst);
+      if (m.breaking && m.kind !== "flyer" && m.hopping <= 0 && shouldChewWall(m, m.breakSt)) {
+        tickBreak(m, dt);
+        if (m.breaking) {
+          var bx = (m.breakHx != null ? m.breakHx : m.x) - m.x;
+          var by = (m.breakHy != null ? m.breakHy : m.y) - m.y;
+          var bl = Math.hypot(bx, by) || 1;
+          m.x += (bx / bl) * 4 * dt;
+          m.y += (by / bl) * 4 * dt;
+        }
+      } else if (m.breaking && m.detour && !shouldChewWall(m, m.breakSt)) {
+        m.breaking = false;
+        m.breakSt = null;
+        var da0 = Math.atan2(m.detour.y - m.y, m.detour.x - m.x);
+        var dx0 = m.x + Math.cos(da0) * spd * dt, dy0 = m.y + Math.sin(da0) * spd * dt;
+        if (!vineHit(dx0, dy0, 13)) { m.x = dx0; m.y = dy0; }
+      } else if (wall) {
+        m.x = wall.x + wall.nx * 16;
+        m.y = wall.y + wall.ny * 16;
+        var det = findDetour(m, target.x, target.y);
+        var goAround = !!det && !shouldChewWall(m, wall.st);
+        if (goAround) {
+          m.detour = det;
+          m.detourT = 0.4;
+          if (m.breaking) { m.breaking = false; m.breakSt = null; }
+          var da = Math.atan2(m.detour.y - m.y, m.detour.x - m.x);
+          var dx2 = m.x + Math.cos(da) * spd * dt, dy2 = m.y + Math.sin(da) * spd * dt;
+          if (!vineHit(dx2, dy2, 13)) { m.x = dx2; m.y = dy2; }
+          else {
+            var tx = -wall.ny, ty = wall.nx;
+            var sdir = (Math.cos(da) * tx + Math.sin(da) * ty) >= 0 ? 1 : -1;
+            var sx2 = m.x + tx * sdir * spd * dt, sy2 = m.y + ty * sdir * spd * dt;
+            if (!vineHit(sx2, sy2, 12)) { m.x = sx2; m.y = sy2; }
           }
+        } else {
+          m.detour = null;
+          beginBreak(m, wall);
+          tickBreak(m, dt);
         }
       } else {
         m.x = nx;
         m.y = ny;
+        if (m.breaking) { m.breaking = false; m.breakSt = null; }
       }
+      var busy = !!(m.breaking || m.hopping > 0 || (seekingLine && m.chewTarget));
+      if ((m.stillT || 0) > 1.2 && !busy && m.kind !== "flyer") {
+        var w2 = vineAhead(m, target.x - m.x, target.y - m.y) || vineHit(m.x, m.y, 26);
+        if (w2) {
+          if (shouldChewWall(m, w2.st)) beginBreak(m, w2);
+          else {
+            var det = findDetour(m, target.x, target.y);
+            if (det) { m.detour = det; m.detourT = 0.6; }
+            else beginBreak(m, w2);
+          }
+        }
+        m.stillT = 0;
+      }
+      noteMotion(m, dt, busy || !!m.breaking);
       if (seekingLine && m.chewTarget && nearStroke(m.chewTarget, m.x, m.y, 16)) {
         m.chew += dt;
         if (m.chew >= m.chewTime) {
@@ -1463,16 +1805,24 @@
       }
     }
   }
+  function strokeInCombo(st) {
+    if (!st || !play) return false;
+    return play.combos.some(function (c) { return c.a === st.id || c.b === st.id; });
+  }
   function nearestChewStroke(m) {
-    var best = null, bd = 99999;
-    play.strokes.forEach(function (st) {
-      if (strokeFolded(st)) return;
-      var h = nearStroke(st, m.x, m.y, 999);
-      if (!h) return;
-      var score = h.d - Math.min(70, st.length * 0.22);
-      if (score < bd) { bd = score; best = { st: st, pt: { x: h.x, y: h.y } }; }
-    });
-    return best;
+    function consider(allowCombo) {
+      var best = null, bd = 99999;
+      play.strokes.forEach(function (st) {
+        if (strokeFolded(st) || st.reinforced) return;
+        if (!allowCombo && strokeInCombo(st)) return;
+        var h = nearStroke(st, m.x, m.y, 999);
+        if (!h) return;
+        var score = h.d + Math.min(120, st.length * 0.6);
+        if (score < bd) { bd = score; best = { st: st, pt: { x: h.x, y: h.y } }; }
+      });
+      return best;
+    }
+    return consider(false) || consider(true);
   }
   function touchingColor(m, color, rad) {
     for (var i = 0; i < play.strokes.length; i++) {
@@ -1812,7 +2162,7 @@
       var folded = strokeFolded(st);
       if (folded) ctx.globalAlpha = 0.28;
       crayonStroke(ctx, st.pts, st.color, st.color === "green" ? 11 : 9, st.id);
-      if (st.color === "green") { vineTicks(ctx, st); if (st.hp > 0 && st.hp < (20 + st.length * 0.3) * 0.5) vineCracks(ctx, st); }
+      if (st.color === "green") { vineTicks(ctx, st); if (st.hp > 0 && st.maxHp && st.hp < st.maxHp * 0.85) vineCracks(ctx, st); }
       if (st.color === "yellow") zapTicks(ctx, st, t);
       if (st.color === "purple") purpleEnds(ctx, st, t);
       ctx.globalAlpha = 1;
@@ -2298,7 +2648,16 @@
     var sc = m.scale || 1;
     var fly = m.kind === "flyer" ? -14 + Math.sin(t * 7 + (m.id || 0)) * 3 : 0;
     var hop = (m.hopping && m.hopping > 0) ? -10 * Math.sin((1 - Math.max(0, m.hopping) / 0.55) * Math.PI) : 0;
-    ctx.translate(x, y + Math.sin(t * 3 + (m.id || 1)) * 1.2 + hop + fly);
+    var bite = 0, shake = 0;
+    if (m.breaking) {
+      bite = 3 + Math.sin(t * 28) * 2;
+      shake = Math.sin(t * 50) * 1.6;
+    }
+    ctx.translate(
+      x + shake + (m.breaking ? Math.cos(m.breakAng || 0) * bite * 0.4 : 0),
+      y + Math.sin(t * 3 + (m.id || 1)) * 1.2 + hop + fly + (m.breaking ? Math.sin(m.breakAng || 0) * bite * 0.4 : 0)
+    );
+    if (m.breaking && m.breakAng != null) ctx.rotate(Math.sin(t * 22) * 0.18);
     ctx.scale(sc, sc);
     if (m.hurt > 0) ctx.globalAlpha = 0.7 + Math.sin(t * 30) * 0.3;
     var ink = "#5a5562";
@@ -2355,8 +2714,24 @@
     ctx.moveTo(5, -5); ctx.lineTo(2, -3.5);
     ctx.stroke();
     ctx.beginPath();
-    ctx.arc(0, 3.2, 3, Math.PI, 0, false);
-    ctx.stroke();
+    if (m.breaking) {
+      ctx.arc(0, 4, 3.4, 0.15, Math.PI - 0.15);
+      ctx.stroke();
+      ctx.fillStyle = "#3a2a22";
+      ctx.beginPath();
+      ctx.moveTo(-2.2, 3); ctx.lineTo(-1.2, 7); ctx.lineTo(-0.2, 3);
+      ctx.moveTo(2.2, 3); ctx.lineTo(1.2, 7); ctx.lineTo(0.2, 3);
+      ctx.fill();
+      ctx.strokeStyle = "#226c36";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(8, 6); ctx.lineTo(14, 10);
+      ctx.moveTo(9, 11); ctx.lineTo(13, 8);
+      ctx.stroke();
+    } else {
+      ctx.arc(0, 3.2, 3, Math.PI, 0, false);
+      ctx.stroke();
+    }
     if (m.kind === "flyer") {
       var flap = Math.sin(t * 18 + (m.id || 0)) * 0.5;
       ctx.fillStyle = "rgba(255,248,230,0.85)";
@@ -2463,6 +2838,7 @@
     document.getElementById("btn-how").addEventListener("click", function () {
       if (window.DDAudio) window.DDAudio.unlock();
       sfx("tap");
+      howReturn = "menu";
       showScreen("how");
     });
     document.getElementById("btn-settings").addEventListener("click", function () {
@@ -2472,7 +2848,23 @@
       showScreen("settings");
     });
     document.getElementById("btn-levels-back").addEventListener("click", function () { sfx("tap"); showScreen("menu"); });
-    document.getElementById("btn-how-back").addEventListener("click", function () { sfx("tap"); showScreen("menu"); });
+    document.getElementById("btn-how-back").addEventListener("click", function () {
+      sfx("tap");
+      if (howReturn === "pause" && play) {
+        showScreen("play");
+        openModal("modal-pause");
+      } else showScreen("menu");
+      howReturn = "menu";
+    });
+    var pauseHow = document.getElementById("btn-pause-how");
+    if (pauseHow) pauseHow.addEventListener("click", function () {
+      sfx("tap");
+      howReturn = "pause";
+      closeModal("modal-pause");
+      showScreen("how");
+    });
+    var calloutOk = document.getElementById("btn-callout-ok");
+    if (calloutOk) calloutOk.addEventListener("click", function () { sfx("tap"); dismissCallout(); });
     document.getElementById("btn-set-back").addEventListener("click", function () { sfx("tap"); showScreen("menu"); });
     document.getElementById("btn-pause").addEventListener("click", function () {
       if (!play || play.ended) return;
@@ -2515,6 +2907,7 @@
         play.tool = tool;
         sfx("select");
         syncTools();
+        teachColor(tool);
       });
     });
     var field = document.getElementById("field");
@@ -2621,12 +3014,15 @@
   }
   function vineCracks(ctx, st) {
     ctx.save();
-    ctx.strokeStyle = "rgba(90,50,24,0.8)";
-    ctx.lineWidth = 2;
-    for (var d = 20; d < st.length; d += 46) {
+    var frac = st.maxHp ? st.hp / st.maxHp : 0.5;
+    var step = frac < 0.3 ? 18 : frac < 0.55 ? 28 : 40;
+    ctx.strokeStyle = frac < 0.3 ? "rgba(90,40,20,0.95)" : "rgba(90,50,24,0.8)";
+    ctx.lineWidth = frac < 0.3 ? 2.6 : 2;
+    for (var d = 16; d < st.length; d += step) {
       var p = pointAtStroke(st, d);
+      var s = frac < 0.3 ? 7 : 5;
       ctx.beginPath();
-      ctx.moveTo(p.x - 4, p.y - 4); ctx.lineTo(p.x + 1, p.y + 1); ctx.lineTo(p.x - 2, p.y + 5);
+      ctx.moveTo(p.x - s, p.y - s * 0.6); ctx.lineTo(p.x + 1, p.y + 1); ctx.lineTo(p.x - s * 0.4, p.y + s);
       ctx.stroke();
     }
     ctx.restore();
@@ -2723,6 +3119,8 @@
       rules: play.rules || null,
       leaks: play.leaks,
       usedCombo: !!play.usedCombo,
+      maxStill: play.maxStill || 0,
+      callout: callout ? callout.text : null,
       lives: play.house.hp,
       houseHp: play.house.hp,
       houseHurt: !!play.houseHurt,
@@ -2743,7 +3141,8 @@
         return {
           id: m.id, kind: m.kind, boss: m.boss || null, x: m.x, y: m.y, hp: m.hp, max: m.max,
           phase: m.phase || 0, armor: !!m.armor, hopping: !!(m.hopping > 0), visible: monsterVisible(m),
-          chew: m.chew || 0, tiny: !!m.tiny, leaked: !!m.leaked, lane: m.lane,
+          chew: m.chew || 0, tiny: !!m.tiny, leaked: !!m.leaked, lane: m.lane, breaking: !!m.breaking, stillT: m.stillT || 0,
+          detour: m.detour ? { x: m.detour.x, y: m.detour.y, pathLen: m.detour.pathLen } : null,
         };
       }),
     };
@@ -2773,7 +3172,7 @@
     setManual: function (v) { manual = !!v; },
     screen: function () { return screen; },
     state: snapshot,
-    setTool: function (id) { if (play && crayonUnlocked(id)) { play.tool = id; syncTools(); } },
+    setTool: function (id) { if (play && crayonUnlocked(id)) { play.tool = id; syncTools(); teachColor(id); } },
     setInk: function (n) { if (play) { play.ink = clamp(n, 0, play.inkMax); updateHud(); } },
     setTimeScale: function (n) { timeScale = Math.max(0.1, n); },
     setHouseHp: function (n) { if (play) { play.house.hp = n; updateHud(); } },
@@ -2823,6 +3222,14 @@
     },
     unlockNightmare: function () { save.nightmare = true; persist(); syncSettingButtons(); },
     unlockAll: function () { save.unlocked = 18; save.crayons.yellow = true; save.crayons.purple = true; persist(); syncTools(); },
+    clearTips: function () {
+      save.seenTips = {};
+      persist();
+      callout = null;
+      calloutQueue = [];
+      var el = document.getElementById("callout");
+      if (el) el.hidden = true;
+    },
     rating: function () { return play ? (play.rating || (play.ended === "win" ? ratePage() : 0)) : 0; },
     save: function () { return jsonCopy(save); },
     cost: function (color) { return inkCostPerPx(color); },
