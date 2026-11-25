@@ -1,367 +1,160 @@
-/* Doodle Defense pages: 3 worlds, 5 pages + a boss each. Design coords are 390x620. */
+/* Doodle Defense pages: 3 worlds, 5 pages + a boss each. Design coords are 390x620.
+   Each page has `ink` (the whole ink budget), `lanes` (the trails scribbles walk, first point = entrance)
+   and `waves` written in a tiny code: S scribble, J hopper, E eraser-bug, P splitter, N sneaky,
+   A armored, L healer, F flyer, X copycat, Bs/Bn/Bh bosses. The digit is the lane; @n is the second it appears. */
 (function (global) {
   "use strict";
+  var MAP = { S: "scribble", J: "jumper", E: "eater", P: "splitter", N: "sneaky", A: "armored", L: "healer", F: "flyer", X: "adapt" };
+  var BOSSES = { Bs: "smudge", Bn: "nibble", Bh: "hidey" };
+
+  function wave(str) {
+    var out = [];
+    str.split(/\s+/).forEach(function (tok) {
+      if (!tok) return;
+      var m = /^(B[snh]|[SJEPNALFX])(\d)(?:@([\d.]+))?$/.exec(tok);
+      if (!m) throw new Error("bad wave token " + tok);
+      var it = { lane: +m[2] };
+      if (BOSSES[m[1]]) { it.kind = "boss"; it.boss = BOSSES[m[1]]; } else it.kind = MAP[m[1]];
+      if (m[3] != null) it.dt = +m[3];
+      out.push(it);
+    });
+    return out;
+  }
+  function P(id, world, name, blurb, hint, o) {
+    var lv = {
+      id: id, world: world, name: name, blurb: blurb, hint: hint,
+      goal: o.stars ? "stars" : "house",
+      starsNeed: o.starsNeed || 0, boss: o.boss || null, adapt: !!o.adapt,
+      house: { x: o.house[0], y: o.house[1], hp: 3 },
+      ink: o.ink, lanes: o.lanes, ks: o.ks || null,
+      puddles: o.puddles || [], stains: o.stains || [], blots: o.blots || [],
+      stars: (o.stars || []).map(function (s) { return { x: s[0], y: s[1] }; }),
+      wind: o.wind || null, fold: o.fold || null,
+      waves: o.waves.map(wave),
+    };
+    return lv;
+  }
+  function pud(x, y, r, vx, vy) { return { x: x, y: y, r: r, vx: vx || 0, vy: vy || 0 }; }
+  function area(x, y, r) { return { x: x, y: y, r: r }; }
 
   var LEVELS = [
-    {
-      id: 1, world: 1, name: "First Scribble",
-      blurb: "Draw a line. Your doodles will walk it.",
-      hint: "Pick a crayon, then draw a path.",
-      goal: "house",
-      house: { x: 200, y: 470, hp: 5 },
-      puddles: [], stars: [],
-      spawns: [
-        { at: 5, x: 200, y: 20, kind: "scribble", wave: 1 },
-        { at: 12, x: 20, y: 180, kind: "scribble", wave: 1 },
-        { at: 20, x: 370, y: 160, kind: "scribble", wave: 2 },
-        { at: 28, x: 80, y: 20, kind: "scribble", wave: 2 },
-        { at: 38, x: 320, y: 30, kind: "scribble", wave: 3 }
-      ]
-    },
-    {
-      id: 2, world: 1, name: "Loopy Guard",
-      blurb: "A loop makes doodles walk in a circle.",
-      hint: "Draw a loop around the house to guard it.",
-      goal: "house",
-      house: { x: 195, y: 300, hp: 5 },
-      puddles: [], stars: [],
-      spawns: [
-        { at: 4, x: 195, y: 16, kind: "scribble", wave: 1 },
-        { at: 8, x: 16, y: 300, kind: "scribble", wave: 1 },
-        { at: 12, x: 374, y: 300, kind: "scribble", wave: 1 },
-        { at: 18, x: 40, y: 16, kind: "scribble", wave: 2 },
-        { at: 24, x: 350, y: 16, kind: "scribble", wave: 2 },
-        { at: 32, x: 16, y: 500, kind: "scribble", wave: 3 },
-        { at: 40, x: 374, y: 500, kind: "scribble", wave: 3 },
-        { at: 50, x: 195, y: 16, kind: "scribble", wave: 3 }
-      ]
-    },
-    {
-      id: 3, world: 1, name: "Puddle Splash",
-      blurb: "Draw through a puddle to make swimmers.",
-      hint: "Draw through the puddle, or loop a star to grab it.",
-      goal: "stars",
-      starsNeed: 5,
-      house: { x: 320, y: 520, hp: 4 },
-      puddles: [
-        { x: 150, y: 240, r: 62 },
-        { x: 220, y: 310, r: 48 }
-      ],
-      stars: [
-        { x: 150, y: 240 }, { x: 220, y: 310 }, { x: 80, y: 200 },
-        { x: 260, y: 180 }, { x: 180, y: 390 }
-      ],
-      spawns: [
-        { at: 6, x: 20, y: 80, kind: "scribble", wave: 1 },
-        { at: 14, x: 200, y: 16, kind: "scribble", wave: 1 },
-        { at: 24, x: 370, y: 200, kind: "scribble", wave: 2 },
-        { at: 36, x: 20, y: 400, kind: "scribble", wave: 2 }
-      ]
-    },
-    {
-      id: 4, world: 1, name: "Vine Fence",
-      blurb: "Green vines can block scribble monsters.",
-      hint: "Green vines can block the way. Try crossing red with green for thorns!",
-      goal: "house",
-      house: { x: 80, y: 400, hp: 5 },
-      puddles: [{ x: 260, y: 200, r: 44 }],
-      stars: [],
-      spawns: [
-        { at: 4, x: 374, y: 80, kind: "scribble", wave: 1 },
-        { at: 8, x: 374, y: 200, kind: "scribble", wave: 1 },
-        { at: 12, x: 374, y: 340, kind: "scribble", wave: 1 },
-        { at: 20, x: 374, y: 160, kind: "scribble", wave: 2 },
-        { at: 26, x: 374, y: 420, kind: "scribble", wave: 2 },
-        { at: 34, x: 374, y: 260, kind: "scribble", wave: 2 },
-        { at: 44, x: 300, y: 16, kind: "scribble", wave: 3 },
-        { at: 54, x: 374, y: 500, kind: "jumper", wave: 3 }
-      ]
-    },
-    {
-      id: 5, world: 1, name: "Star Parade",
-      blurb: "Mix loops, puddles, and color crosses to grab the stars.",
-      hint: "Try crossing a red line with a blue one for a splash burst!",
-      goal: "stars",
-      starsNeed: 7,
-      house: { x: 80, y: 110, hp: 4 },
-      puddles: [{ x: 240, y: 360, r: 70 }],
-      stars: [
-        { x: 240, y: 360 }, { x: 200, y: 120 }, { x: 320, y: 200 },
-        { x: 70, y: 280 }, { x: 300, y: 480 }, { x: 150, y: 500 }, { x: 340, y: 90 }
-      ],
-      spawns: [
-        { at: 5, x: 374, y: 300, kind: "scribble", wave: 1 },
-        { at: 10, x: 200, y: 16, kind: "scribble", wave: 1 },
-        { at: 16, x: 374, y: 500, kind: "jumper", wave: 2 },
-        { at: 24, x: 20, y: 500, kind: "scribble", wave: 2 },
-        { at: 34, x: 374, y: 160, kind: "scribble", wave: 3 },
-        { at: 44, x: 160, y: 16, kind: "jumper", wave: 3 }
-      ]
-    },
-    {
-      id: 6, world: 1, name: "Big Smudge",
-      blurb: "A giant scribble is coming. Keep the house clean!",
-      hint: "Loop the house and plant thorns. Big Smudge drops little scribbles.",
-      goal: "house",
-      boss: "smudge",
-      house: { x: 195, y: 420, hp: 6 },
-      puddles: [{ x: 80, y: 180, r: 40 }],
-      stars: [],
-      spawns: [
-        { at: 5, x: 195, y: 20, kind: "boss", boss: "smudge", wave: 1 },
-        { at: 16, x: 20, y: 80, kind: "scribble", wave: 2 },
-        { at: 28, x: 370, y: 80, kind: "scribble", wave: 2 },
-        { at: 42, x: 40, y: 20, kind: "jumper", wave: 3 }
-      ]
-    },
-    {
-      id: 7, world: 2, name: "Hopper Field",
-      blurb: "These hoppers bounce right over vines.",
-      hint: "Vines alone won't stop hoppers. Slow them with blue, or plant thorns.",
-      goal: "house",
-      house: { x: 195, y: 500, hp: 5 },
-      puddles: [], stars: [],
-      spawns: [
-        { at: 4, x: 80, y: 16, kind: "jumper", wave: 1 },
-        { at: 7, x: 300, y: 16, kind: "jumper", wave: 1 },
-        { at: 14, x: 195, y: 16, kind: "jumper", wave: 2 },
-        { at: 18, x: 40, y: 16, kind: "scribble", wave: 2 },
-        { at: 22, x: 350, y: 16, kind: "jumper", wave: 2 },
-        { at: 32, x: 120, y: 16, kind: "jumper", wave: 3 },
-        { at: 36, x: 270, y: 16, kind: "jumper", wave: 3 },
-        { at: 48, x: 195, y: 16, kind: "jumper", wave: 3 }
-      ]
-    },
-    {
-      id: 8, world: 2, name: "Windy Page",
-      blurb: "A breeze bends lines as you draw them.",
-      hint: "The wind tugs fresh lines. Draw a little into the breeze.",
-      goal: "house",
-      house: { x: 80, y: 320, hp: 5 },
-      wind: { ax: 0.9, ay: 0.25 },
-      puddles: [{ x: 260, y: 420, r: 46 }],
-      stars: [],
-      spawns: [
-        { at: 5, x: 370, y: 80, kind: "scribble", wave: 1 },
-        { at: 10, x: 370, y: 240, kind: "jumper", wave: 1 },
-        { at: 18, x: 370, y: 400, kind: "scribble", wave: 2 },
-        { at: 24, x: 300, y: 16, kind: "scribble", wave: 2 },
-        { at: 34, x: 370, y: 160, kind: "jumper", wave: 3 },
-        { at: 44, x: 370, y: 500, kind: "splitter", wave: 3 }
-      ]
-    },
-    {
-      id: 9, world: 2, name: "Coffee Break",
-      blurb: "Coffee stains make ink slow and thirsty.",
-      hint: "Drawing in a stain uses extra ink. A loop around a star still grabs it.",
-      goal: "stars",
-      starsNeed: 5,
-      house: { x: 70, y: 80, hp: 4 },
-      stains: [
-        { x: 200, y: 260, r: 70 },
-        { x: 300, y: 420, r: 54 }
-      ],
-      puddles: [{ x: 120, y: 400, r: 48, vx: 22, vy: 10 }],
-      stars: [
-        { x: 200, y: 260 }, { x: 300, y: 420 }, { x: 120, y: 400 },
-        { x: 320, y: 140 }, { x: 80, y: 300 }
-      ],
-      spawns: [
-        { at: 6, x: 370, y: 200, kind: "scribble", wave: 1 },
-        { at: 14, x: 200, y: 16, kind: "jumper", wave: 1 },
-        { at: 24, x: 370, y: 500, kind: "eater", wave: 2 },
-        { at: 36, x: 370, y: 80, kind: "scribble", wave: 2 }
-      ]
-    },
-    {
-      id: 10, world: 2, name: "Split Decision",
-      blurb: "Tickle a splitter and it becomes two little scribbles.",
-      hint: "Leave room for two! Thorns and splashes catch both.",
-      goal: "house",
-      house: { x: 195, y: 480, hp: 5 },
-      puddles: [{ x: 80, y: 220, r: 44, vx: 18, vy: 16 }],
-      stars: [],
-      spawns: [
-        { at: 5, x: 40, y: 16, kind: "splitter", wave: 1 },
-        { at: 9, x: 350, y: 16, kind: "splitter", wave: 1 },
-        { at: 18, x: 195, y: 16, kind: "scribble", wave: 2 },
-        { at: 24, x: 80, y: 16, kind: "splitter", wave: 2 },
-        { at: 28, x: 310, y: 16, kind: "jumper", wave: 2 },
-        { at: 40, x: 40, y: 16, kind: "splitter", wave: 3 },
-        { at: 44, x: 350, y: 16, kind: "splitter", wave: 3 }
-      ]
-    },
-    {
-      id: 11, world: 2, name: "Now You See It",
-      blurb: "Sneaky scribbles stay hidden until they touch blue.",
-      hint: "Paint blue trails. Sneaky scribbles only show on blue, puddles, or splashes.",
-      goal: "house",
-      house: { x: 195, y: 500, hp: 5 },
-      puddles: [{ x: 300, y: 240, r: 40 }],
-      stars: [],
-      spawns: [
-        { at: 5, x: 60, y: 16, kind: "sneaky", wave: 1 },
-        { at: 9, x: 330, y: 16, kind: "sneaky", wave: 1 },
-        { at: 16, x: 195, y: 16, kind: "scribble", wave: 2 },
-        { at: 22, x: 40, y: 16, kind: "sneaky", wave: 2 },
-        { at: 26, x: 350, y: 16, kind: "sneaky", wave: 2 },
-        { at: 36, x: 120, y: 16, kind: "jumper", wave: 3 },
-        { at: 40, x: 270, y: 16, kind: "sneaky", wave: 3 },
-        { at: 50, x: 195, y: 16, kind: "sneaky", wave: 3 }
-      ]
-    },
-    {
-      id: 12, world: 2, name: "Nibblewick",
-      blurb: "This big nibbler chews up your thickest line.",
-      hint: "Don't put all your ink in one line. Keep a backup loop around the house.",
-      goal: "house",
-      boss: "nibble",
-      house: { x: 195, y: 460, hp: 6 },
-      stains: [{ x: 80, y: 200, r: 50 }],
-      puddles: [{ x: 310, y: 200, r: 40 }],
-      stars: [],
-      spawns: [
-        { at: 5, x: 195, y: 20, kind: "boss", boss: "nibble", wave: 1 },
-        { at: 18, x: 20, y: 100, kind: "eater", wave: 2 },
-        { at: 30, x: 370, y: 100, kind: "splitter", wave: 2 },
-        { at: 44, x: 40, y: 20, kind: "jumper", wave: 3 }
-      ]
-    },
-    {
-      id: 13, world: 3, name: "Folded Note",
-      blurb: "Part of the page folds over, then flips.",
-      hint: "You can't draw under the fold. Wait for it to flip, or work on the open side.",
-      goal: "house",
-      house: { x: 90, y: 400, hp: 5 },
-      fold: { start: "right", cover: 0.38, period: 8 },
-      puddles: [], stars: [],
-      spawns: [
-        { at: 5, x: 40, y: 16, kind: "scribble", wave: 1 },
-        { at: 10, x: 160, y: 16, kind: "jumper", wave: 1 },
-        { at: 18, x: 40, y: 16, kind: "splitter", wave: 2 },
-        { at: 24, x: 200, y: 16, kind: "eater", wave: 2 },
-        { at: 34, x: 80, y: 16, kind: "sneaky", wave: 3 },
-        { at: 40, x: 180, y: 16, kind: "jumper", wave: 3 },
-        { at: 52, x: 40, y: 16, kind: "scribble", wave: 3 }
-      ]
-    },
-    {
-      id: 14, world: 3, name: "Copycats",
-      blurb: "These scribbles change to counter the lines you already drew.",
-      hint: "Mix your colors. If you only use vines, hoppers will show up.",
-      goal: "house",
-      adapt: true,
-      house: { x: 195, y: 480, hp: 5 },
-      puddles: [{ x: 60, y: 200, r: 36 }],
-      stars: [],
-      spawns: [
-        { at: 4, x: 40, y: 16, kind: "adapt", wave: 1 },
-        { at: 8, x: 350, y: 16, kind: "adapt", wave: 1 },
-        { at: 16, x: 195, y: 16, kind: "adapt", wave: 2 },
-        { at: 20, x: 80, y: 16, kind: "adapt", wave: 2 },
-        { at: 24, x: 310, y: 16, kind: "adapt", wave: 2 },
-        { at: 34, x: 40, y: 16, kind: "adapt", wave: 3 },
-        { at: 38, x: 195, y: 16, kind: "adapt", wave: 3 },
-        { at: 42, x: 350, y: 16, kind: "adapt", wave: 3 },
-        { at: 54, x: 120, y: 16, kind: "adapt", wave: 3 },
-        { at: 58, x: 270, y: 16, kind: "adapt", wave: 3 }
-      ]
-    },
-    {
-      id: 15, world: 3, name: "Desk Storm",
-      blurb: "Wind, wandering puddles, and a mixed crowd.",
-      hint: "Plan short lines. Use Zap if you have it, and watch the puddles drift.",
-      goal: "house",
-      house: { x: 195, y: 500, hp: 5 },
-      wind: { ax: -0.7, ay: 0.35 },
-      puddles: [
-        { x: 90, y: 220, r: 42, vx: 20, vy: 14 },
-        { x: 300, y: 300, r: 38, vx: -16, vy: 18 }
-      ],
-      stars: [],
-      spawns: [
-        { at: 4, x: 40, y: 16, kind: "jumper", wave: 1 },
-        { at: 8, x: 350, y: 16, kind: "sneaky", wave: 1 },
-        { at: 16, x: 195, y: 16, kind: "splitter", wave: 2 },
-        { at: 22, x: 80, y: 16, kind: "eater", wave: 2 },
-        { at: 28, x: 310, y: 16, kind: "jumper", wave: 2 },
-        { at: 40, x: 40, y: 16, kind: "sneaky", wave: 3 },
-        { at: 46, x: 195, y: 16, kind: "splitter", wave: 3 },
-        { at: 52, x: 350, y: 16, kind: "jumper", wave: 3 }
-      ]
-    },
-    {
-      id: 16, world: 3, name: "Star Vault",
-      blurb: "Lots of stars, and not much leftover ink if you scribble everywhere.",
-      hint: "Loop each star to grab it without walking the whole page.",
-      goal: "stars",
-      starsNeed: 8,
-      house: { x: 195, y: 300, hp: 5 },
-      puddles: [{ x: 195, y: 160, r: 36, vx: 14, vy: 0 }],
-      stains: [{ x: 195, y: 480, r: 58 }],
-      stars: [
-        { x: 70, y: 80 }, { x: 320, y: 80 }, { x: 70, y: 240 }, { x: 320, y: 240 },
-        { x: 70, y: 420 }, { x: 320, y: 420 }, { x: 195, y: 160 }, { x: 195, y: 480 }
-      ],
-      spawns: [
-        { at: 5, x: 20, y: 16, kind: "jumper", wave: 1 },
-        { at: 10, x: 370, y: 16, kind: "sneaky", wave: 1 },
-        { at: 20, x: 20, y: 500, kind: "splitter", wave: 2 },
-        { at: 26, x: 370, y: 500, kind: "eater", wave: 2 },
-        { at: 38, x: 20, y: 200, kind: "scribble", wave: 3 },
-        { at: 44, x: 370, y: 200, kind: "jumper", wave: 3 }
-      ]
-    },
-    {
-      id: 17, world: 3, name: "Full Toolbox",
-      blurb: "Zap, Blink, folds, and a little of everything.",
-      hint: "Blink can hop doodles to a far star. Zap ticks along a yellow line.",
-      goal: "stars",
-      starsNeed: 6,
-      house: { x: 80, y: 500, hp: 5 },
-      fold: { start: "right", cover: 0.32, period: 9 },
-      wind: { ax: 0.4, ay: -0.15 },
-      puddles: [{ x: 200, y: 240, r: 40, vx: 12, vy: 10 }],
-      stars: [
-        { x: 80, y: 120 }, { x: 200, y: 120 }, { x: 80, y: 280 },
-        { x: 200, y: 280 }, { x: 80, y: 400 }, { x: 240, y: 500 }
-      ],
-      spawns: [
-        { at: 5, x: 40, y: 16, kind: "sneaky", wave: 1 },
-        { at: 10, x: 200, y: 16, kind: "jumper", wave: 1 },
-        { at: 18, x: 80, y: 16, kind: "eater", wave: 2 },
-        { at: 24, x: 200, y: 16, kind: "splitter", wave: 2 },
-        { at: 36, x: 40, y: 16, kind: "sneaky", wave: 3 },
-        { at: 44, x: 180, y: 16, kind: "jumper", wave: 3 }
-      ]
-    },
-    {
-      id: 18, world: 3, name: "Hidey Storm",
-      blurb: "The last boss hops, hides, and calls hoppers.",
-      hint: "Keep blue on the page so Hidey Storm can't vanish. Zap helps a lot.",
-      goal: "house",
-      boss: "hidey",
-      house: { x: 195, y: 500, hp: 6 },
-      wind: { ax: 0.35, ay: 0.2 },
-      puddles: [
-        { x: 80, y: 240, r: 36, vx: 14, vy: 8 },
-        { x: 310, y: 300, r: 36, vx: -14, vy: 10 }
-      ],
-      stars: [],
-      spawns: [
-        { at: 5, x: 195, y: 20, kind: "boss", boss: "hidey", wave: 1 },
-        { at: 16, x: 40, y: 16, kind: "jumper", wave: 2 },
-        { at: 22, x: 350, y: 16, kind: "sneaky", wave: 2 },
-        { at: 36, x: 80, y: 16, kind: "splitter", wave: 3 },
-        { at: 44, x: 310, y: 16, kind: "jumper", wave: 3 }
-      ]
-    }
+    P(1, 1, "First Scribble", "Draw a line. Your doodles will walk it.",
+      "Study the dotted trail, draw on it, then press Start.",
+      { house: [195, 500], ink: 100,
+        lanes: [[[195, 10], [195, 300], [195, 470]]],
+        waves: ["S0 S0 S0", "S0 S0 S0 S0", "S0 S0 S0 S0 S0 S0"] }),
+    P(2, 1, "Loopy Guard", "A loop makes doodles walk in a circle.",
+      "Three trails! A loop makes guards that circle.",
+      { house: [195, 300], ink: 120,
+        lanes: [[[195, 10], [195, 230]], [[10, 300], [130, 300]], [[380, 300], [260, 300]]],
+        waves: ["S0 S1 S2", "S1 S2 S0 S1 S2 S0 S1", "S0 S1 S2 S0 S1 S2 S0 S1 S2 S0 S1"] }),
+    P(3, 1, "Puddle Splash", "Draw through a puddle to make swimmers.",
+      "Collect 5 stars and survive every wave. Your star route can guard too.",
+      { house: [320, 520], ink: 190, stars: [[80, 200], [150, 240], [220, 310], [180, 390], [260, 180]], starsNeed: 5,
+        puddles: [pud(150, 240, 62), pud(220, 310, 48)],
+        lanes: [[[10, 60], [150, 200], [320, 440]], [[380, 200], [250, 300], [320, 440]]],
+        waves: ["S0 S1 S0 S1 S0", "S0 S1 S0 S1 S0 S1 S0", "S0 S1 S0 S1 S0 S1 S0 S1 S0 S1"] }),
+    P(4, 1, "Vine Fence", "Green vines can block scribble monsters.",
+      "Vines wear down. Hoppers will jump them at the end.",
+      { house: [80, 400], ink: 110,
+        puddles: [pud(260, 200, 44)],
+        lanes: [[[380, 90], [250, 250], [130, 390]], [[380, 520], [250, 450], [130, 410]]],
+        waves: ["S0 S1 S0 S1 S0", "S0 S1 J0 S1 J0 S0 S0", "S0 S1 J0 S1 J1 S0 J0 S1 J1 S0 S1"] }),
+    P(5, 1, "Star Parade", "Mix loops, puddles, and color crosses to grab the stars.",
+      "Collect 7 stars and survive every wave. Plan the route first.",
+      { house: [80, 110], ink: 310, starsNeed: 7,
+        stars: [[240, 360], [200, 120], [320, 200], [70, 280], [300, 480], [150, 500], [340, 90]],
+        puddles: [pud(240, 360, 70)],
+        lanes: [[[380, 300], [250, 260], [120, 130]], [[200, 610], [200, 400], [100, 200], [90, 140]]],
+        waves: ["S0 S1 S0 S1 S0", "J0 S1 J1 S0 J0 J0", "S0 J1 S1 J0 S0 J1 S1 S0"] }),
+    P(6, 1, "Big Smudge", "A giant scribble is coming. Keep the house clean!",
+      "Big Smudge has a shell at first. Use combos, then slow it down.",
+      { house: [195, 440], ink: 180, boss: "smudge",
+        lanes: [[[195, 10], [195, 250], [195, 410]], [[10, 120], [120, 260], [180, 400]], [[380, 120], [270, 260], [210, 400]]],
+        waves: ["S0 S1 S2 S0 S1 S2 S0", "J0 J1 S2 S0 J1 J2 J0", "Bs0 S1 S2 S1 S2 J0"] }),
+
+    P(7, 2, "Hopper Field", "These hoppers bounce right over vines.",
+      "Hoppers ignore vines. Armored ones show up at the end.",
+      { house: [195, 500], ink: 270,
+        lanes: [[[70, 10], [110, 250], [180, 470]], [[195, 10], [195, 470]], [[320, 10], [280, 250], [210, 470]]],
+        waves: ["J0 J1 J2 S1 J0 J1 J2 J0 J1 J2", "J0 J1 J2 A1 J0 J2 J1 A1 J0 J1 J2 A1", "A0 A1 A2 J0 J1 J2 A1 J0 J2 A0 A1 A2 J0", "A0 A1 A2 A1 J0 J1 J2 A0 A2 J1 A1 A0 A1 A2 A1 J0"] }),
+    P(8, 2, "Windy Page", "Eraser-bugs chew your lines, and the wind bends them.",
+      "Eraser-bugs eat your lines. Give them decoys!",
+      { house: [80, 320], ink: 320, wind: { ax: 0.9, ay: 0.25 },
+        puddles: [pud(260, 420, 46)],
+        lanes: [[[380, 60], [250, 200], [120, 300]], [[380, 560], [250, 420], [120, 340]]],
+        waves: ["E0 S1 E1 S0 E0 E0 S1", "E0 E1 A0 S1 E0 E1 J1 E0 E1 A0", "A0 E1 E0 A1 E0 E1 J0 S1 A0 E1 E0 A1", "A0 A1 E0 E1 E0 E1 J0 J1 A0 A1 A0 A1 E0 E1 E0"] }),
+    P(9, 2, "Coffee Break", "Coffee stains make ink slow and thirsty.",
+      "Collect 5 stars and survive. Drawing in a stain costs double.",
+      { blots: [area(240, 160, 24)], house: [70, 80], ink: 350, starsNeed: 5,
+        stars: [[200, 260], [300, 420], [120, 400], [320, 140], [80, 300]],
+        stains: [area(200, 260, 70), area(300, 420, 54)],
+        puddles: [pud(120, 400, 48, 22, 10)],
+        lanes: [[[380, 200], [250, 200], [120, 100]], [[380, 560], [300, 400], [200, 260], [90, 110]]],
+        waves: ["S0 S1 A0 S1 S0 S1", "A0 A1 S0 J1 A0 S1 A0 A1 S0", "A0 A1 A0 A1 J0 J1 S0 S1 A0 A1 A0 A1"] }),
+    P(10, 2, "Split Decision", "Tickle a splitter and it becomes two little scribbles.",
+      "Healers mend the others. Pop them first!",
+      { house: [195, 480], ink: 270,
+        puddles: [pud(80, 220, 44, 18, 16)],
+        lanes: [[[40, 10], [120, 250], [185, 450]], [[350, 10], [270, 250], [205, 450]], [[195, 10], [195, 450]]],
+        waves: ["P0 P1 S2 P2 P0 P1", "P0 P1 P2 L2 P0 P1 L1 P0 P1 P2", "P0 L1 P1 L0 P2 A2 P0 P1 A0 P0 L1 P1 L0", "P0 P1 P2 L0 L1 L2 A0 A1 A2 P0 P1 P0 P1 P2 L0 L1"] }),
+    P(11, 2, "Now You See It", "Sneaky scribbles stay hidden until they touch blue.",
+      "Sneaky ones only show on blue, puddles, or splashes.",
+      { house: [195, 500], ink: 220,
+        puddles: [pud(300, 240, 40)],
+        lanes: [[[60, 10], [130, 250], [185, 470]], [[330, 10], [260, 250], [205, 470]]],
+        waves: ["N0 N1 S0 N1 N0 N0 N1", "N0 N1 N0 N1 A0 N1 A1 N0 N1 N0", "N0 N1 A0 A1 N0 N1 J0 N1 A0 N0 N1 A0 A1", "N0 N1 N0 N1 A0 A1 N0 N1 J0 J1 A0 A1 N0 N1 N0 N1 A0 A1"] }),
+    P(12, 2, "Nibblewick", "This big nibbler chews up your lines.",
+      "Nibblewick eats lines. It gets worse as it gets hurt.",
+      { house: [195, 460], ink: 340, boss: "nibble",
+        stains: [area(80, 200, 50)], puddles: [pud(310, 200, 40)],
+        lanes: [[[195, 10], [195, 420]], [[20, 100], [130, 250], [180, 420]], [[370, 100], [260, 250], [210, 420]]],
+        waves: ["E0 E1 E2 S0 S1 E0 E1", "S0 P1 E2 A0 E1 E0 A2 S0 P1 E2", "A0 A1 E2 E0 E1 J1 L2 A0 A1 E2", "Bn0 E1 S2 E2 J1 A2 A1 E1 S2 A0 E2"] }),
+
+    P(13, 3, "Folded Note", "Part of the page folds over, then flips. Flyers soar in.",
+      "Flyers fly over lines. Build a triangle launch pad!",
+      { blots: [area(195, 250, 22)], house: [195, 430], ink: 270, fold: { start: "right", cover: 0.26, period: 9 }, ks: [0.8, 0.8],
+        lanes: [[[60, 10], [130, 200], [185, 400]], [[330, 10], [260, 200], [205, 400]]],
+        waves: ["S0 S1 S0 F1 F0 S0 S1", "F0 F1 S0 S1 F0 A1 F1 F0 F1 S0", "F0 F1 A0 A1 S0 F1 F0 S1 F0 F1 A0 A1", "F0 F1 F0 F1 A0 A1 L0 L1 F0 F1 F0 F1 F0 F1 A0"] }),
+    P(14, 3, "Copycats", "These scribbles change to counter the lines you already drew.",
+      "Copycats counter your colors. Mix your tools.",
+      { house: [195, 480], ink: 440, adapt: true,
+        puddles: [pud(60, 200, 36)],
+        lanes: [[[40, 10], [120, 260], [185, 450]], [[350, 10], [270, 260], [205, 450]], [[195, 10], [195, 450]]],
+        waves: ["X0 X1 X2 X0 X1 X0 X1", "X0 X1 X2 X0 X1 X2 X0 X0 X1 X2", "X0 X1 X2 X0 X1 X2 X0 X1 X2 X0 X1 X2 X0", "X0 X1 X2 X0 X1 X2 X0 X1 X2 X0 X1 X2 X0 X1 X2 X0 X1 X2"] }),
+    P(15, 3, "Desk Storm", "Wind, wandering puddles, and a mixed crowd.",
+      "A mixed crowd. Read the preview and counter each type.",
+      { house: [195, 500], ink: 340, wind: { ax: -0.7, ay: 0.35 },
+        puddles: [pud(90, 220, 42, 20, 14), pud(300, 300, 38, -16, 18)],
+        lanes: [[[30, 10], [100, 260], [180, 470]], [[360, 10], [290, 260], [210, 470]], [[195, 10], [195, 470]]],
+        waves: ["J0 N1 P2 F2 J1 J0 N1", "A0 L0 E1 F1 N2 J1 P0 A0 L0 E1", "A0 A1 L2 F0 F1 N0 E2 P1 J0 A0 A1 L2 F0", "A0 A1 A2 L0 L1 F0 F1 F2 N0 E1 P2 J0 A0 A1 A2 L0 L1 F0"] }),
+    P(16, 3, "Star Vault", "Lots of stars, and not much ink if you scribble everywhere.",
+      "Collect 8 stars and survive a mixed crowd. Budget carefully.",
+      { blots: [area(130, 360, 26), area(260, 360, 26)], house: [195, 300], ink: 480, starsNeed: 8,
+        stars: [[70, 80], [320, 80], [70, 240], [320, 240], [70, 420], [320, 420], [195, 160], [195, 480]],
+        puddles: [pud(195, 160, 36, 14, 0)], stains: [area(195, 480, 58)],
+        lanes: [[[10, 10], [100, 150], [170, 270]], [[380, 10], [290, 150], [220, 270]], [[195, 610], [195, 450], [195, 330]]],
+        waves: ["S0 N1 J2 S0 P1 S0 N1", "P0 E1 F2 A0 S1 A1 P0 E1 F2", "A0 A1 F2 F0 L1 N0 J2 E1 A0 A1 F2 F0", "A0 A1 A2 F0 F1 F2 L0 L1 N2 A0 A1 A2 F0"] }),
+    P(17, 3, "Full Toolbox", "Zap, Blink, folds, wind, and a little of everything.",
+      "Collect 6 stars and survive. Folds and wind change your lines.",
+      { house: [195, 520], ink: 380, starsNeed: 6, fold: { start: "right", cover: 0.24, period: 9 },
+        wind: { ax: 0.4, ay: -0.15 }, ks: [0.8, 0.8],
+        stars: [[150, 100], [240, 160], [150, 230], [240, 300], [150, 370], [240, 430]],
+        puddles: [pud(200, 240, 40, 12, 10)],
+        lanes: [[[40, 10], [120, 250], [185, 490]], [[350, 10], [270, 250], [205, 490]]],
+        waves: ["N0 F1 J0 S1 N1 N0 F1", "A0 L1 F0 P1 E0 N1 A0 L1 F0", "A0 A1 F0 F1 L0 P1 N0 J1 E0 A0 A1 F0 F1", "A0 A1 A0 F0 F1 L0 L1 P0 N1 J0 E1 A0 A1 A0 F0 F1"] }),
+    P(18, 3, "Hidey Storm", "The last boss hops, hides, and calls flyers.",
+      "Hidey Storm hides, then calls flyers and a healer.",
+      { house: [195, 500], ink: 320, boss: "hidey", wind: { ax: 0.35, ay: 0.2 },
+        puddles: [pud(80, 240, 36, 14, 8), pud(310, 300, 36, -14, 10)],
+        lanes: [[[30, 10], [110, 260], [180, 470]], [[360, 10], [280, 260], [210, 470]], [[195, 10], [195, 470]]],
+        waves: ["J0 N1 F2 J1 N0 J0 N1", "A0 A1 L2 P0 F1 F0 A0 A1 L2", "A0 L1 F2 N0 J1 A2 F0 A0 L1 F2", "Bh2 J0 N1 A0 F1 A1 J1 N0 A2 F0"] }),
   ];
 
   var WORLDS = [
     { id: 1, name: "Sunny Sketchbook", pages: [1, 2, 3, 4, 5], boss: 6 },
     { id: 2, name: "The Messy Desk", pages: [7, 8, 9, 10, 11], boss: 12 },
-    { id: 3, name: "Stormy Attic", pages: [13, 14, 15, 16, 17], boss: 18 }
+    { id: 3, name: "Stormy Attic", pages: [13, 14, 15, 16, 17], boss: 18 },
   ];
 
   global.DD_LEVELS = LEVELS;
