@@ -3,8 +3,12 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-  <meta name="theme-color" content="#f3e2c2">
+  <meta name="theme-color" content="#f4ead3">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <title>Doodle Defense</title>
+  <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="assets/icon-192.png">
   <link rel="apple-touch-icon" href="assets/icon-192.png">
   <style>
@@ -22,22 +26,24 @@
     }
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     html, body {
-      margin: 0; height: 100%; overflow: hidden;
-      background: #6b5340;
+      margin: 0; width: 100%; height: 100%;
+      width: 100vw; height: 100dvh;
+      overflow: hidden;
+      background: #f4ead3;
       font-family: "Comic Sans MS", "Chalkboard SE", "Trebuchet MS", "Segoe UI", sans-serif;
       color: var(--ink);
       user-select: none;
       touch-action: none;
     }
-    #frame { position: fixed; inset: 0; }
+    #frame { position: fixed; inset: 0; width: 100%; height: 100%; overflow: hidden; }
     #stage {
-      position: absolute; left: 50%; top: 50%;
-      width: 390px; height: 844px;
-      background: var(--paper);
-      border-radius: 28px;
+      position: absolute; inset: 0;
+      width: 100%; height: 100%;
+      background: #f4ead3;
+      border-radius: 0;
       overflow: hidden;
-      box-shadow: 0 18px 40px rgba(0,0,0,.35), 0 0 0 6px #d8c39a;
-      transform-origin: center center;
+      box-shadow: none;
+      transform: none !important;
     }
     canvas#scene, canvas#field {
       display: block;
@@ -59,7 +65,7 @@
     .screen.on { display: flex; }
     .screen button, .screen .hit { pointer-events: auto; }
     .logo {
-      margin: 54px 20px 6px;
+      margin: calc(28px + env(safe-area-inset-top, 0px)) 20px 6px;
       font-size: 42px;
       line-height: 0.95;
       text-align: center;
@@ -165,20 +171,23 @@
     .lvl.lock { opacity: .7; }
     .lvl.lock .num { background: #d8cbb6; }
 
-    /* play */
+    /* play — field is the whole viewport; HUD and dock float over it */
     #screen-play { align-items: stretch; pointer-events: none; }
     #hud {
-      position: relative;
-      z-index: 3;
-      height: 58px;
-      width: 100%;
-      flex: 0 0 58px;
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      z-index: 5;
+      height: auto;
+      width: auto;
+      flex: none;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 8px 10px 0;
-      pointer-events: auto;
+      gap: 6px;
+      padding: calc(6px + env(safe-area-inset-top, 0px)) 8px 0;
+      pointer-events: none;
     }
+    #hud > * { pointer-events: auto; }
     .pill {
       display: flex; align-items: center; gap: 6px;
       background: #fff8e6;
@@ -189,20 +198,26 @@
       font-size: 15px;
       min-width: 64px;
     }
-    #level-chip { flex-direction: column; gap: 0; padding: 3px 12px; min-width: 130px; }
-    #level-chip .nm { font-size: 14px; }
+    #level-chip { flex-direction: column; gap: 0; padding: 3px 10px; min-width: 0; }
+    #level-chip .nm { font-size: 11px; max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     #level-chip .wv { font-size: 11px; color: #6a5544; font-weight: 700; }
-    #btn-pause {
-      width: 44px; height: 44px; border: 2px solid var(--ink);
-      border-radius: 14px; background: #fff8e6;
-      font-size: 18px; font-weight: 800; cursor: pointer;
+    #btn-pause, #btn-fs {
+      width: 36px; height: 36px; border: 2px solid var(--ink);
+      border-radius: 12px; background: #fff8e6;
+      font-size: 15px; font-weight: 800; cursor: pointer;
       font-family: inherit;
+      flex: 0 0 36px;
     }
+    #hud-right { display: flex; gap: 4px; }
+    #ink-pill { min-width: 0; padding: 3px 8px; gap: 4px; }
+    #ink-pill #ink-bar { width: 52px; height: 8px; margin: 0; }
     #field-wrap {
-      position: relative;
-      flex: 1 1 auto;
+      position: absolute;
+      inset: 0;
+      flex: none;
       min-height: 0;
       width: 100%;
+      height: 100%;
       pointer-events: auto;
     }
     #field {
@@ -229,19 +244,21 @@
     }
     #hint.on { display: block; }
     #dock {
-      flex: 0 0 222px;
-      width: 100%;
-      z-index: 3;
+      position: absolute;
+      left: 0; right: 0; bottom: 0;
+      flex: none;
+      width: auto;
+      z-index: 5;
       pointer-events: auto;
-      padding: 6px 10px calc(10px + env(safe-area-inset-bottom, 0px));
-      background: #efe0c0;
-      border-top: 3px solid var(--ink);
+      padding: 4px 6px calc(6px + env(safe-area-inset-bottom, 0px));
+      background: rgba(244, 234, 211, 0.92);
+      border-top: 2px solid var(--ink);
     }
-    #ink-wrap { margin: 0 4px 5px; }
-    #ink-label { font-size: 12px; font-weight: 800; margin: 0 0 3px; display: flex; justify-content: space-between; }
+    #ink-wrap { display: none; }
+    #ink-label { font-size: 11px; font-weight: 800; margin: 0 0 3px; display: flex; justify-content: space-between; }
     #ink-bar {
-      height: 16px;
-      border: 2px solid var(--ink);
+      height: 8px;
+      border: 1.5px solid var(--ink);
       border-radius: 999px;
       background: #fff;
       overflow: hidden;
@@ -260,10 +277,10 @@
       gap: 4px;
     }
     .tool {
-      border: 3px solid var(--ink);
-      border-radius: 16px;
+      border: 2px solid var(--ink);
+      border-radius: 12px;
       background: #fff8e6;
-      min-height: 58px; padding: 2px 0 3px;
+      min-height: 44px; padding: 1px 0 2px;
       cursor: pointer;
       font-family: inherit;
       color: var(--ink);
@@ -271,11 +288,11 @@
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      gap: 2px;
-      box-shadow: 2px 3px 0 rgba(58,42,34,.25);
+      gap: 1px;
+      box-shadow: 1px 2px 0 rgba(58,42,34,.22);
     }
     .tool .swatch {
-      width: 16px; height: 26px; border-radius: 7px 7px 5px 5px;
+      width: 12px; height: 18px; border-radius: 5px 5px 4px 4px;
       border: 2px solid var(--ink);
     }
     .tool.blue .swatch { background: var(--blue); }
@@ -286,25 +303,50 @@
     .tool.purple .swatch { background: var(--purple); }
     .tool .nm { font-size: 9px; font-weight: 800; line-height: 1; }
     .tool .fx { font-size: 8px; font-weight: 700; color: #6a5544; line-height: 1; letter-spacing: -0.2px; }
-    #crayon-legend {
-      margin: 0 2px 5px;
-      background: #fff8e6;
+    #crayon-legend { /* kept for tests / screen readers; not shown on the play field */ }
+    #draw-tools {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 4px;
+      margin: 0 0 4px;
+    }
+    .dtool {
       border: 2px solid var(--ink);
       border-radius: 10px;
-      padding: 4px 8px;
-      font-size: 11px;
+      background: #fff8e6;
+      min-height: 36px;
+      padding: 2px 0;
+      cursor: pointer;
+      font-family: inherit;
+      color: var(--ink);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 0;
       font-weight: 800;
-      line-height: 1.25;
-      text-align: left;
-      min-height: 22px;
+      font-size: 9px;
+      line-height: 1.05;
+      box-shadow: 1px 2px 0 rgba(58,42,34,.2);
     }
+    .dtool .ic { font-size: 14px; line-height: 1; }
+    .dtool.sel { background: #fff3b0; transform: translateY(-2px); }
+    #buddy-wrap { display: flex; gap: 4px; margin: 0 0 4px; }
+    #buddy-wrap[hidden] { display: none; }
+    #btn-buddy, #btn-design-mini {
+      flex: 1;
+      border: 2px dashed var(--ink);
+      border-radius: 10px;
+      background: #fff3d0;
+      min-height: 36px;
+      font-family: inherit; font-weight: 800; font-size: 10px; color: var(--ink);
+      cursor: pointer;
+    }
+    #btn-buddy.sel { background: #ffe98a; border-style: solid; }
 
-    #packets { display: grid; gap: 4px; margin: 0 0 5px; }
+    #packets { display: grid; gap: 4px; margin: 0 0 4px; }
     #packets[hidden] { display: none; }
     .packet {
       position: relative; overflow: hidden;
       display: flex; align-items: center; gap: 3px;
-      min-height: 46px; padding: 2px 4px 2px 3px;
+      min-height: 36px; padding: 1px 3px 1px 2px;
       border: 2.5px dashed var(--ink); border-radius: 10px;
       background: #fff3d0; color: var(--ink); font-family: inherit; text-align: left; cursor: pointer;
       box-shadow: 2px 2px 0 rgba(58,42,34,.22);
@@ -395,15 +437,17 @@
     .diff-row .seg { flex-wrap: wrap; width: 100%; justify-content: flex-end; }
     .seg button:disabled { opacity: .5; }
     #plan {
-      position: absolute; left: 6px; right: 6px; bottom: 6px; z-index: 5;
-      display: flex; align-items: center; gap: 8px;
-      background: #fff8e6; border: 2px solid var(--ink); border-radius: 14px;
-      padding: 5px 6px 5px 10px; pointer-events: auto;
+      position: absolute; left: 6px; right: 6px;
+      top: calc(46px + env(safe-area-inset-top, 0px));
+      bottom: auto; z-index: 6;
+      display: flex; align-items: center; gap: 6px;
+      background: rgba(255,248,230,0.95); border: 2px solid var(--ink); border-radius: 14px;
+      padding: 4px 6px 4px 8px; pointer-events: auto;
       box-shadow: 2px 3px 0 rgba(58,42,34,.25);
     }
     #plan[hidden] { display: none; }
     #plan-text { flex: 1; font-size: 12px; font-weight: 700; line-height: 1.25; text-align: left; }
-    #plan .btn { width: 104px; margin: 0; padding: 9px 4px; font-size: 15px; flex: 0 0 104px; }
+    #plan .btn { width: 84px; margin: 0; padding: 8px 4px; font-size: 14px; flex: 0 0 84px; }
     #field-wrap.planning #hint { bottom: 66px; }
     #star-rules { list-style: none; margin: 0 0 10px; padding: 8px 10px; text-align: left; background: #fff; border-radius: 12px; border: 2px dashed #d2c09a; font-weight: 700; font-size: 13px; }
     #star-rules li[data-ok="1"] { color: #8a6a10; }
@@ -411,16 +455,18 @@
     #star-rules[hidden] { display: none; }
 
     #callout {
-      position: absolute; left: 10px; right: 10px; top: 10px; z-index: 6;
+      position: absolute; left: 50%; top: 28%; z-index: 8;
+      transform: translateX(-50%);
+      width: min(300px, 86%);
       background: #fff8e6; border: 3px solid var(--ink); border-radius: 16px;
-      padding: 8px 10px 8px 12px;
-      box-shadow: 3px 4px 0 rgba(58,42,34,.25);
-      display: flex; align-items: flex-start; gap: 8px;
+      padding: 12px 12px 10px;
+      box-shadow: 4px 5px 0 rgba(58,42,34,.28);
+      display: flex; flex-direction: column; align-items: stretch; gap: 8px;
       pointer-events: auto;
     }
     #callout[hidden] { display: none; }
-    #callout-text { flex: 1; font-size: 13px; font-weight: 800; line-height: 1.3; text-align: left; }
-    #callout .btn { width: auto; margin: 0; padding: 7px 10px; font-size: 13px; flex: 0 0 auto; box-shadow: 2px 2px 0 #3a2a22; }
+    #callout-text { flex: 1; font-size: 15px; font-weight: 800; line-height: 1.3; text-align: center; }
+    #callout .btn { width: 100%; margin: 0; padding: 8px 10px; font-size: 14px; flex: 0 0 auto; box-shadow: 2px 2px 0 #3a2a22; }
     #screen-how { overflow-y: auto; align-items: stretch; pointer-events: auto; -webkit-overflow-scrolling: touch; }
     #screen-how .panel { align-self: center; margin-top: 22px; margin-bottom: 18px; max-height: calc(100% - 40px); display: flex; flex-direction: column; }
     .codex { text-align: left; overflow-y: auto; flex: 1; min-height: 0; -webkit-overflow-scrolling: touch; background: #fff; border-radius: 14px; padding: 10px 12px; margin: 0 0 12px; border: 2px dashed #d2c09a; font-weight: 650; font-size: 13px; line-height: 1.35; }
@@ -438,7 +484,44 @@
     #plan { align-items: stretch; }
     #plan-text { font-size: 11px; max-height: 84px; overflow-y: auto; }
     #plan-text .hint { color: #6a5544; font-weight: 700; }
-    #field-wrap.planning #hint { bottom: 98px; }
+    #field-wrap.planning #hint { bottom: 62px; }
+    #plan-text { font-size: 11px; max-height: 92px; overflow-y: auto; pointer-events: none; }
+    #plan-icons { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
+    .pico {
+      display: flex; align-items: center; gap: 2px;
+      background: #fff; border: 1.5px solid var(--ink); border-radius: 999px;
+      padding: 1px 6px 1px 3px; font-size: 10px; font-weight: 800; white-space: nowrap;
+    }
+    .pico .dot { width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid var(--ink); }
+    #screen-design { overflow-y: auto; align-items: stretch; pointer-events: auto; -webkit-overflow-scrolling: touch; }
+    #screen-design .panel { align-self: center; margin-top: 16px; margin-bottom: 16px; width: min(352px, 94%); }
+    #design-preview { width: 88px; height: 88px; margin: 0 auto 8px; display: block; }
+    .drow { display: flex; flex-wrap: wrap; gap: 6px; justify-content: center; margin: 0 0 10px; }
+    .drow button {
+      border: 2px solid var(--ink); border-radius: 10px; background: #efe4cf;
+      font-family: inherit; font-weight: 800; font-size: 12px; padding: 5px 8px; cursor: pointer; color: var(--ink);
+    }
+    .drow button.on { background: #ffe17a; }
+    .swatch-btn { width: 28px; height: 28px; padding: 0 !important; border-radius: 50% !important; }
+    #design-cost { font-weight: 800; margin: 0 0 8px; }
+    #design-slots { display: flex; gap: 6px; justify-content: center; margin: 0 0 10px; }
+    .dslot { min-width: 72px; }
+    @media (orientation: landscape) {
+      .logo { margin-top: 16px; font-size: 32px; }
+      .panel { margin-top: 16px; }
+      #hud { right: 80px; }
+      #plan { right: 86px; }
+      #dock {
+        left: auto; top: 0; right: 0; bottom: 0; width: 80px;
+        border-top: none; border-left: 2px solid var(--ink);
+        padding: calc(6px + env(safe-area-inset-top, 0px)) calc(6px + env(safe-area-inset-right, 0px)) calc(6px + env(safe-area-inset-bottom, 0px)) 4px;
+        display: flex; flex-direction: column; justify-content: flex-end; gap: 4px;
+      }
+      #tools { grid-template-columns: 1fr 1fr; }
+      #draw-tools { grid-template-columns: 1fr; }
+      #packets { grid-template-columns: 1fr !important; }
+      #buddy-wrap { flex-direction: column; }
+    }
   </style>
 </head>
 <body>
@@ -452,6 +535,7 @@
         <button class="btn" id="btn-play" data-testid="btn-play">Play</button>
         <button class="btn lavender" id="btn-endless" data-testid="btn-endless">Endless Sketch</button>
         <button class="btn mint" id="btn-how" data-testid="btn-how">How to play</button>
+        <button class="btn lavender" id="btn-design" data-testid="btn-design">Design a doodle</button>
         <button class="btn ghost" id="btn-settings" data-testid="btn-settings">Settings</button>
       </section>
 
@@ -469,6 +553,7 @@
           <p id="loadout-sub" data-testid="loadout-sub"></p>
           <div id="loadout-grid" data-testid="loadout-grid"></div>
           <button class="btn" id="btn-loadout-start" data-testid="btn-loadout-start">Start page</button>
+          <button class="btn ghost" id="btn-loadout-design" data-testid="btn-loadout-design">Design a doodle</button>
           <button class="btn ghost" id="btn-loadout-back" data-testid="btn-loadout-back">Back</button>
         </div>
       </section>
@@ -495,6 +580,15 @@
               <li><b>Triangle = launch pad.</b> Doodles on it fly at nearby monsters. This is how you hit flyers (splashes work too).</li>
               <li><b>A loop</b> around a star grabs it. Loops also make doodles walk in a circle as guards.</li>
             </ul>
+            <h3 data-testid="codex-tools">Drawing tools</h3>
+            <ul id="codex-tools-list">
+              <li data-testid="codex-tool-pen"><b>Pen</b> (cheap): a thin, precise line. Breaks easily.</li>
+              <li data-testid="codex-tool-brush"><b>Brush</b> (costly): a thick, sturdy stroke with a wider effect.</li>
+              <li data-testid="codex-tool-highlighter"><b>Highlighter</b> (medium): a wide translucent tint. Slows and reveals in its width, but monsters chew it fast.</li>
+            </ul>
+            <p>The tool applies on top of the crayon color (blue still slows, green still walls, and so on).</p>
+            <h3 data-testid="codex-defenders">Custom doodles</h3>
+            <p data-testid="codex-defenders-blurb">From the menu you can design a buddy: pick a color, face, size, a role (Poke, Slow, Mend, Gather, or Guard) and a trait or two. Then tap a drawn line to send them out. They patrol back and forth. Bigger or stronger choices cost more ink.</p>
             <h3 data-testid="codex-components">Components (seed packets)</h3>
             <p style="margin:0 0 6px">Before each page, pick a few packets. Tap a packet, then tap the page to place it. It costs ink, then recharges during a wave. Components fill, shoot or help on their own; ink drops fade, so tap them quickly. Red shading shows where monsters will chew.</p>
             <ul id="codex-comps-list" data-testid="codex-comps-list"></ul>
@@ -509,6 +603,12 @@
               <li><b>Armored:</b> tickles barely work. Use thorns, Zap, a splash, or a launch pad.</li>
               <li><b>Healer:</b> mends others. Pop it first with a splash or thorns.</li>
               <li><b>Flyer:</b> soars over lines and walls. Use a triangle launch pad or a splash.</li>
+              <li data-testid="codex-kind-tunneler"><b>Digger:</b> burrows under lines. Hit it with a splash, or poke it when it pops up.</li>
+              <li data-testid="codex-kind-thief"><b>Ink-nib:</b> steals ink drops. Collect them first, or poke it.</li>
+              <li data-testid="codex-kind-splatter"><b>Blotling:</b> leaves a no-draw blot when popped. Take it out early and away from your lines.</li>
+              <li data-testid="codex-kind-shielder"><b>Cover-bug:</b> shields nearby monsters. Pop the Cover-bug first.</li>
+              <li data-testid="codex-kind-dasher"><b>Zipper:</b> a tiny fast swarm. Slow them with blue, glue, or a splash.</li>
+              <li data-testid="codex-kind-mimic"><b>Drop-faker:</b> disguises as an ink drop. Don't tap it — poke it.</li>
               <li><b>Bosses</b> (Big Smudge, Nibblewick, Hidey Storm) change tactics as they get hurt.</li>
             </ul>
             <h3 data-testid="codex-hazards">Page hazards</h3>
@@ -522,6 +622,23 @@
             <p>Stars: clear the page, let nothing reach the house, and keep 35% of your ink after using a combo or launch pad. Clear Hard to unlock <b>Nightmare</b>.</p>
           </div>
           <button class="btn" id="btn-how-back" data-testid="btn-how-back">Got it</button>
+        </div>
+      </section>
+
+      
+      <section id="screen-design" class="screen" data-testid="screen-design">
+        <div class="panel">
+          <h2>Design a doodle</h2>
+          <canvas id="design-preview" width="176" height="176" data-testid="design-preview"></canvas>
+          <div id="design-cost" data-testid="design-cost">16 ink</div>
+          <div class="drow" id="design-colors" data-testid="design-colors"></div>
+          <div class="drow" id="design-faces" data-testid="design-faces"></div>
+          <div class="drow" id="design-sizes" data-testid="design-sizes"></div>
+          <div class="drow" id="design-roles" data-testid="design-roles"></div>
+          <div class="drow" id="design-traits" data-testid="design-traits"></div>
+          <div id="design-slots" data-testid="design-slots"></div>
+          <button class="btn" id="btn-design-save" data-testid="btn-design-save">Save to slot</button>
+          <button class="btn ghost" id="btn-design-back" data-testid="btn-design-back">Back</button>
         </div>
       </section>
 
@@ -555,6 +672,12 @@
               <button data-val="off">Off</button>
             </div>
           </div>
+          <div class="set-row">Tips
+            <div class="seg" id="set-tips">
+              <button data-val="on" class="on" data-testid="tips-on">On</button>
+              <button data-val="off" data-testid="tips-off">Off</button>
+            </div>
+          </div>
           <p class="credits">
             Original game, crayon art, and sounds. Music: “Doodle menu like song” by StumpyStrust, CC0 1.0 (OpenGameArt).
           </p>
@@ -563,13 +686,17 @@
       </section>
 
       <section id="screen-play" class="screen" data-testid="screen-play">
-        <header id="hud">
-          <div class="pill" id="goal-pill" data-testid="goal-pill"><span id="goal-icon">🏠</span><span id="goal-count" data-testid="goal-count">0</span></div>
-          <div class="pill" id="level-chip"><span class="nm" id="level-name">First Scribble</span><span class="wv" id="wave-label">Draw a path</span></div>
-          <button id="btn-pause" data-testid="btn-pause" aria-label="Pause">❚❚</button>
-        </header>
         <div id="field-wrap">
           <canvas id="field" width="390" height="620" data-testid="field"></canvas>
+          <header id="hud">
+            <div class="pill" id="goal-pill" data-testid="goal-pill"><span id="goal-icon">🏠</span><span id="goal-count" data-testid="goal-count">0</span></div>
+            <div class="pill" id="ink-pill" data-testid="ink-pill"><span>💧</span><span id="ink-num" data-testid="ink-num">100</span><div id="ink-bar"><div id="ink-fill" data-testid="ink-fill"></div></div></div>
+            <div class="pill" id="level-chip"><span class="nm" id="level-name">First Scribble</span><span class="wv" id="wave-label">1/3</span></div>
+            <div id="hud-right">
+              <button id="btn-fs" data-testid="btn-fs" aria-label="Full screen">⛶</button>
+              <button id="btn-pause" data-testid="btn-pause" aria-label="Pause">❚❚</button>
+            </div>
+          </header>
           <div id="hint" data-testid="hint"></div>
           <div id="callout" data-testid="callout" hidden>
             <div id="callout-text" data-testid="callout-text"></div>
@@ -577,7 +704,10 @@
           </div>
           <div id="plan" data-testid="plan-panel" hidden>
             <div id="plan-text" data-testid="plan-text"></div>
-            <button class="btn" id="btn-start-wave" data-testid="btn-start-wave">Start wave</button>
+            <button class="btn" id="btn-start-wave" data-testid="btn-start-wave">Start</button>
+          </div>
+          <div id="ink-wrap">
+            <div id="ink-label"><span id="ink-title" data-testid="ink-title">Ink</span></div>
           </div>
           <span class="visually-hidden" id="ink-count" data-testid="ink-count">0</span>
           <span class="visually-hidden" id="house-hp" data-testid="house-hp">0</span>
@@ -586,12 +716,17 @@
           <span class="visually-hidden" id="wave-count" data-testid="wave-count">0</span>
         </div>
         <div id="dock">
-          <div id="ink-wrap">
-            <div id="ink-label"><span id="ink-title" data-testid="ink-title">Ink budget</span><span id="ink-num" data-testid="ink-num">100</span></div>
-            <div id="ink-bar"><div id="ink-fill" data-testid="ink-fill"></div></div>
-          </div>
           <div id="packets" data-testid="packets" hidden></div>
-          <div id="crayon-legend" data-testid="crayon-legend">Blue: slow — a cheap line that slows monsters</div>
+          <div id="buddy-wrap" data-testid="buddy-wrap">
+            <button id="btn-buddy" data-testid="btn-buddy">Buddy</button>
+            <button id="btn-design-mini" data-testid="btn-design-mini">Edit</button>
+          </div>
+          <div id="draw-tools" data-testid="draw-tools">
+            <button class="dtool sel" data-draw="pen" data-testid="draw-pen"><span class="ic">✎</span><span>Pen</span></button>
+            <button class="dtool" data-draw="brush" data-testid="draw-brush"><span class="ic">🖌</span><span>Brush</span></button>
+            <button class="dtool" data-draw="highlighter" data-testid="draw-highlighter"><span class="ic">🖍</span><span>Highlight</span></button>
+          </div>
+          <div id="crayon-legend" class="visually-hidden" data-testid="crayon-legend">Blue: slow — a cheap line that slows monsters</div>
           <div id="tools">
             <button class="tool blue sel" data-tool="blue" data-testid="tool-blue"><span class="swatch"></span><span class="nm">Blue</span><span class="fx">Slow</span></button>
             <button class="tool red" data-tool="red" data-testid="tool-red"><span class="swatch"></span><span class="nm">Red</span><span class="fx">Tickle</span></button>

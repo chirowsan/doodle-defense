@@ -26,9 +26,11 @@
     crayons: { yellow: false, purple: false },
     endlessBest: 0,
     nightmare: false,
-    settings: { diff: "normal", battery: "auto", sfx: true, music: true },
+    settings: { diff: "normal", battery: "auto", sfx: true, music: true, tips: true },
     seenTips: {},
     loadout: [],
+    designs: [],
+    activeDesign: 0,
   };
 
   var save = loadSave();
@@ -79,11 +81,14 @@
         if (s.settings.battery) out.settings.battery = s.settings.battery;
         if (s.settings.sfx != null) out.settings.sfx = !!s.settings.sfx;
         if (s.settings.music != null) out.settings.music = !!s.settings.music;
+        if (s.settings.tips != null) out.settings.tips = !!s.settings.tips;
       } else if (migrated) {
         out.settings.diff = "normal";
       }
       if (s.seenTips && typeof s.seenTips === "object") out.seenTips = s.seenTips;
       if (Array.isArray(s.loadout)) out.loadout = s.loadout.filter(function (k) { return typeof k === "string"; });
+      if (Array.isArray(s.designs)) out.designs = s.designs.slice(0, 3);
+      if (typeof s.activeDesign === "number") out.activeDesign = s.activeDesign;
       return out;
     } catch (e) {
       return jsonCopy(DEFAULT_SAVE);
@@ -117,10 +122,51 @@
     if (window.DDAudio && window.DDAudio.sfx[name]) window.DDAudio.sfx[name]();
   }
 
+  function stageSize() {
+    var st = document.getElementById("stage");
+    return { w: (st && st.clientWidth) || window.innerWidth, h: (st && st.clientHeight) || window.innerHeight };
+  }
   function fitStage() {
     var stage = document.getElementById("stage");
-    var s = Math.min(window.innerWidth / DESIGN_W, window.innerHeight / DESIGN_H);
-    stage.style.transform = "translate(-50%, -50%) scale(" + s + ")";
+    if (stage) stage.style.transform = "none";
+    document.body.classList.toggle("land", window.innerWidth > window.innerHeight);
+  }
+  var triedFS = false;
+  function tryFullscreen() {
+    if (triedFS) return;
+    triedFS = true;
+    var el = document.documentElement;
+    var req = el.requestFullscreen || el.webkitRequestFullscreen;
+    if (!req) return;
+    try {
+      var pms = req.call(el);
+      if (pms && pms.then) pms.then(function () {
+        try {
+          if (screen.orientation && screen.orientation.lock) {
+            screen.orientation.lock(window.innerWidth > window.innerHeight ? "landscape" : "portrait").catch(function () {});
+          }
+        } catch (e) {}
+        syncFsBtn();
+      }).catch(function () { syncFsBtn(); });
+    } catch (e) {}
+  }
+  function toggleFullscreen() {
+    var doc = document;
+    if (doc.fullscreenElement || doc.webkitFullscreenElement) {
+      var ex = doc.exitFullscreen || doc.webkitExitFullscreen;
+      if (ex) ex.call(doc);
+    } else {
+      triedFS = false;
+      tryFullscreen();
+    }
+    setTimeout(syncFsBtn, 300);
+  }
+  function syncFsBtn() {
+    var b = document.getElementById("btn-fs");
+    if (!b) return;
+    var on = !!(document.fullscreenElement || document.webkitFullscreenElement);
+    b.textContent = on ? "⤓" : "⛶";
+    b.setAttribute("aria-label", on ? "Exit full screen" : "Full screen");
   }
   function sizeCanvas(cv, cssW, cssH) {
     var dpr = dprCap();
@@ -135,8 +181,8 @@
     return ctx;
   }
   function fieldSize() {
-    var cv = document.getElementById("field");
-    return { w: cv.clientWidth || FIELD_W, h: cv.clientHeight || FIELD_H };
+    // Gameplay stays in design space (390x620). The canvas CSS-fills the screen and is scaled in paint/input.
+    return { w: FIELD_W, h: FIELD_H };
   }
   function sx(x) { return x * fieldSize().w / FIELD_W; }
   function sy(y) { return y * fieldSize().h / FIELD_H; }
@@ -342,6 +388,12 @@
     armored:  { hp: 30, spd: 26 },
     healer:   { hp: 14, spd: 24 },
     flyer:    { hp: 16, spd: 42 },
+    tunneler: { hp: 20, spd: 32 },
+    thief:    { hp: 16, spd: 36 },
+    splatter: { hp: 18, spd: 30 },
+    shielder: { hp: 26, spd: 24 },
+    dasher:   { hp: 9,  spd: 58 },
+    mimic:    { hp: 14, spd: 30 },
   };
   var BOSS_STATS = {
     smudge: { hp: 120, spd: 20, name: "Big Smudge" },
@@ -351,29 +403,42 @@
   var KIND_NAME = {
     scribble: "Scribble", jumper: "Hopper", eater: "Eraser-bug", splitter: "Splitter",
     sneaky: "Sneaky", armored: "Armored", healer: "Healer", flyer: "Flyer", boss: "Boss",
+    tunneler: "Digger", thief: "Ink-nib", splatter: "Blotling", shielder: "Cover-bug", dasher: "Zipper", mimic: "Drop-faker",
   };
   var KIND_TIP = {
-    armored: "Armored: tickles barely work. Use thorns, splashes, Zap, or a launch pad.",
-    flyer: "Flyers soar over your lines. Use a triangle launch pad or a splash burst.",
-    healer: "Healers mend the others. Pop them first with a splash or thorns.",
-    sneaky: "Sneaky ones hide. Lay a blue line (or a splash) to reveal them.",
-    eater: "Eraser-bugs eat lines. Give them a small decoy line to chew.",
-    jumper: "Hoppers leap over vines. Loops, blue and thorns still work.",
+    armored: "Armored: tickles barely work. Use thorns or Zap.",
+    flyer: "Flyers soar over lines. Use a launch pad or splash.",
+    healer: "Healers mend others. Pop them first.",
+    sneaky: "Sneaky ones hide. Use a blue line.",
+    eater: "Eraser-bugs eat lines. Give them a decoy.",
+    jumper: "Hoppers jump green walls. Use tickles, blue or thorns.",
     splitter: "Splitters become two. Keep hitting both.",
     scribble: "Scribbles walk the trails. Your doodles poke them.",
-    boss: "Bosses change tactics as they get hurt. Watch the hints.",
-    adapt: "Copycats change to counter the colors you already drew. Mix your tools.",
+    boss: "Bosses change tactics as they get hurt.",
+    adapt: "Copycats counter your colors. Mix tools.",
+    tunneler: "Diggers burrow under lines. Splash them, or poke when they pop up.",
+    thief: "Ink-nibs steal drops. Collect first, or poke them.",
+    splatter: "Blotlings leave a no-draw blot. Pop them early.",
+    shielder: "Cover-bugs shield others. Pop the Cover-bug first.",
+    dasher: "Zippers are a tiny fast swarm. Slow them with blue or a splash.",
+    mimic: "Drop-fakers fake an ink drop. Don't tap — poke them.",
   };
   var KIND_SCOUT = {
     scribble: "poked by your doodles",
-    jumper: "jumps green walls — use tickles, blue, or thorns",
-    eater: "eats your lines — give it a short decoy",
-    splitter: "splits in two — keep hitting both",
-    sneaky: "hides until it touches blue or a splash",
-    armored: "tickles barely work — use thorns, Zap, or a launch pad",
-    healer: "heals others — pop it first",
-    flyer: "flies over lines — use a triangle launch pad or a splash",
-    adapt: "counters your colors — mix your tools",
+    jumper: "jumps green walls — use tickles, blue or thorns",
+    eater: "eats your lines",
+    splitter: "splits in two",
+    sneaky: "hides until blue",
+    armored: "needs thorns or Zap",
+    healer: "heals others",
+    flyer: "needs a launch pad",
+    adapt: "counters your colors",
+    tunneler: "burrows under lines",
+    thief: "steals ink drops",
+    splatter: "leaves a blot",
+    shielder: "shields others",
+    dasher: "fast swarm",
+    mimic: "fakes a drop",
   };
   var BOSS_SCOUT = {
     smudge: "armored, then calls helpers, then rages — use thorns and blue",
@@ -386,7 +451,7 @@
   var INK_SCALE = 0.8;
   // Per-page balance: starting ink (x level ink) and monster toughness. Later pages give less starting ink,
   // so Inkwells (and kill / wave-clear bonuses) matter more; star pages need a fixed route so they keep more ink.
-  var INK_BY_PAGE = { 1: 0.85, 2: 0.85, 3: 0.85, 4: 0.85, 5: 0.85, 6: 0.85, 7: 0.7, 8: 0.7, 9: 0.95, 10: 0.6, 11: 0.6, 12: 0.7, 13: 0.5, 14: 0.5, 15: 0.6, 16: 1.0, 17: 0.6, 18: 0.65 };
+  var INK_BY_PAGE = { 1: 0.85, 2: 0.85, 3: 0.85, 4: 0.85, 5: 0.85, 6: 0.85, 7: 0.7, 8: 0.7, 9: 1.2, 10: 0.6, 11: 0.6, 12: 0.7, 13: 0.5, 14: 0.5, 15: 0.6, 16: 1.0, 17: 0.6, 18: 0.65 };
   var HP_BY_PAGE = { 7: 1, 8: 1.3, 9: 1.3, 10: 1.3, 11: 1.3, 12: 1.3, 13: 1.8, 14: 1.8, 15: 1.8, 16: 1, 17: 1.8, 18: 1.3 };
   function inkScaleFor(id) { return INK_BY_PAGE[id] != null ? INK_BY_PAGE[id] : INK_SCALE; }
   function hpMulFor(id) { return HP_BY_PAGE[id] != null ? HP_BY_PAGE[id] : 1; }
@@ -394,37 +459,37 @@
     inkwell: {
       name: "Inkwell", role: "Makes ink", cost: 20, step: 8, max: 4, cd: 6, hp: 42, aggro: 64, minPage: 1, period: 8, drop: 14, start: 4,
       line: "Inkwell: slowly fills, then drops ink. Tap the drops! Monsters chew it.",
-      teach: "Inkwells make ink. While a wave runs it slowly fills and drops ink: tap the drop before it fades. Keep it away from the trails, or monsters will chew it.",
+      teach: "Inkwells make ink. Tap drops.",
       power: "Touching a blue line waters it: it fills 50% faster."
     },
     decoy: {
       name: "Decoy", role: "Lures", cost: 14, step: 0, max: 3, cd: 4, hp: 55, aggro: 110, minPage: 2,
       line: "Decoy: monsters rush to chew it. Cheap and quick to recharge.",
-      teach: "A Decoy looks tasty. Ground monsters nearby leave the trail to chew it, which buys you time. Put it in your kill box.",
+      teach: "Decoy: monsters rush to chew it.",
       power: "Flyers ignore it."
     },
     sharpener: {
       name: "Sharpener", role: "Shoots", cost: 40, step: 8, max: 3, cd: 10, hp: 36, aggro: 54, range: 120, minPage: 3,
       line: "Sharpener: shoots shavings at ground monsters. A red line speeds it up.",
-      teach: "The Sharpener shoots pencil shavings at ground monsters in range. It is weak against armor and can't hit flyers. Place it a little way from the trail so it isn't chewed.",
+      teach: "Sharpener: shoots at ground monsters.",
       power: "Touching a red line sharpens it: it fires 60% faster."
     },
     glue: {
       name: "Glue pad", role: "Slows", cost: 18, step: 0, max: 3, cd: 5, hp: 30, aggro: 0, minPage: 5, life: 16,
       line: "Glue pad: monsters crawl through it. It dries up after a while.",
-      teach: "Glue pads slow ground monsters to a crawl while they cross them. They dry up after about 16 seconds. Flyers soar right over.",
+      teach: "Glue pad: slows ground monsters.",
       power: "Put one before a wall or splash so monsters linger there."
     },
     bumper: {
       name: "Bumper", role: "Bounces", cost: 26, step: 0, max: 2, cd: 8, hp: 60, aggro: 30, minPage: 8, charges: 8,
       line: "Bumper: bounces monsters back and stuns them. Pops after 8 bumps.",
-      teach: "An eraser Bumper bounces ground monsters backward and stuns them for a moment. It pops after 8 bumps. Great right before a kill box.",
+      teach: "Bumper: bounces and stuns.",
       power: "Flyers and hoppers mid-jump pass over it."
     },
     reservoir: {
       name: "Reservoir", role: "+Ink max", cost: 55, step: 0, max: 1, cd: 25, hp: 50, aggro: 60, minPage: 13, bonus: 50,
       line: "Reservoir: holds 50 more ink (adds 25 now). One per page.",
-      teach: "A Reservoir raises your ink limit by 50 and adds 25 ink right away. If monsters chew it, the extra room goes away.",
+      teach: "Reservoir: more ink room.",
       power: "Only one per page."
     }
   };
@@ -439,26 +504,60 @@
     eraser: { short: "Erase",  line: "Eraser: rub out a line and get a little ink back" },
   };
   var COLOR_TEACH = {
-    blue: "Blue is a slow line. It's cheap, and monsters that walk on it crawl. It also reveals sneaky ones.",
-    red: "Red is a tickle line. Doodles hatch on it, run fast, and poke monsters they touch.",
-    green: "Green is a wall. It blocks monsters, but they will chew through it. Armored ones break walls faster. Hoppers jump over them.",
-    yellow: "Zap shocks nearby ground monsters, then the line fizzles after a few hits.",
-    purple: "Blink swaps anyone who touches one end of the line to the other end.",
-    eraser: "The eraser rubs out a line and gives you a little ink back.",
+    blue: "Blue is a slow line.",
+    red: "Red is a tickle line.",
+    green: "Green is a wall.",
+    yellow: "Zap shocks, then fizzles.",
+    purple: "Blink swaps ends.",
+    eraser: "Eraser rubs a line out.",
   };
   var COMBO_TEACH = {
-    splash: "Splash burst (blue × red): hurts everything nearby, even flyers and sneaky ones.",
-    thorn: "Thorns (red × green): hurt ground monsters standing in them. Best against armor.",
-    bush: "Bouncy bush (green × blue): a springy patch that helps your doodles.",
-    pad: "Launch pad (a triangle): doodles on it fly at nearby monsters. That's how you hit flyers.",
+    splash: "Splash burst! Hurts everything nearby.",
+    thorn: "Thorns! Best against armor.",
+    bush: "Bouncy bush!",
+    pad: "Launch pad! That's how you hit flyers.",
   };
   var HAZARD_TEACH = {
-    puddle: "Puddle: draw through it to make swimmers. Monsters also slow down in the water.",
-    stain: "Coffee stain: drawing here costs double ink.",
-    blot: "Ink blot: a no-draw zone. Your line stops if it hits one.",
-    fold: "Fold: the folded part of the page cuts your line.",
-    wind: "Wind: it pushes your line as you draw.",
+    puddle: "Puddle: draw through it to make swimmers.",
+    stain: "Coffee stain: drawing here costs double.",
+    blot: "Ink blot: you can't draw there.",
+    fold: "Fold: it cuts your line.",
+    wind: "Wind: it pushes your line.",
   };
+  var DRAW_TOOLS = {
+    pen: { id: "pen", name: "Pen", cost: 1, width: 9, hpMul: 1, rad: 14, alpha: 0.92, teach: "Pen: thin, cheap, precise." },
+    brush: { id: "brush", name: "Brush", cost: 1.55, width: 15, hpMul: 1.85, rad: 22, alpha: 0.95, teach: "Brush: thick, costly, sturdy." },
+    highlighter: { id: "highlighter", name: "Highlighter", cost: 1.2, width: 22, hpMul: 0.4, rad: 28, alpha: 0.42, highlight: true, teach: "Highlighter: wide tint. Weak to chewing." },
+  };
+  var BUDDY_ROLES = {
+    poke: { id: "poke", name: "Poke", cost: 16, dmg: 5, interval: 0.65 },
+    slow: { id: "slow", name: "Slow", cost: 14, slow: 0.55, rad: 30 },
+    mend: { id: "mend", name: "Mend", cost: 18, heal: 10, interval: 1.1 },
+    gather: { id: "gather", name: "Gather", cost: 12, vacuum: 52 },
+    guard: { id: "guard", name: "Guard", cost: 20, shield: 0.45, rad: 38 },
+  };
+  var BUDDY_TRAITS = {
+    swift: { id: "swift", name: "Swift", cost: 6, spd: 1.45 },
+    sturdy: { id: "sturdy", name: "Sturdy", cost: 8, hp: 1.6 },
+    thrifty: { id: "thrifty", name: "Thrifty", cost: -5, costMul: 0.8 },
+  };
+  var BUDDY_FACES = ["smile", "wink", "grit", "calm", "star"];
+  var BUDDY_COLORS = ["red", "blue", "green", "yellow", "purple", "orange"];
+  function defaultDesign() {
+    return { color: "red", face: "smile", size: "md", role: "poke", traits: [] };
+  }
+  function designCost(d) {
+    d = d || defaultDesign();
+    var role = BUDDY_ROLES[d.role] || BUDDY_ROLES.poke;
+    var cost = role.cost;
+    if (d.size === "sm") cost -= 3;
+    if (d.size === "lg") cost += 7;
+    (d.traits || []).forEach(function (tr) {
+      if (BUDDY_TRAITS[tr]) cost += BUDDY_TRAITS[tr].cost;
+    });
+    if ((d.traits || []).indexOf("thrifty") >= 0) cost = Math.round(cost * 0.8);
+    return Math.max(8, cost);
+  }
   var rngState = 1;
   function seedRng(s) { rngState = (s >>> 0) || 1; }
   function rng() {
@@ -479,7 +578,8 @@
       id: o.id, name: o.name, blurb: o.blurb || "", diff: o.diff, goal: o.goal,
       boss: o.boss || null, adapt: !!o.adapt, endless: !!o.endless,
       t: 0, ink: o.ink, inkMax: o.inkMax, inkSlow: 0, refill: o.refill, hpMul: o.hpMul || 1,
-      tool: "blue", drawing: null, strokes: [], critters: [], monsters: [], parts: [], floats: [],
+      tool: "blue", drawTool: o.drawTool || "pen", drawing: null, strokes: [], critters: [], monsters: [], parts: [], floats: [],
+      buddies: [], shake: 0, placingBuddy: false,
       combos: [], pads: [],
       house: o.house, puddles: o.puddles || [], stains: o.stains || [], blots: o.blots || [],
       lanes: o.lanes || [], wind: o.wind || null, fold: o.fold || null,
@@ -541,6 +641,9 @@
     closeModal("modal-end");
     syncTools();
     syncPackets();
+    play.drawTool = "pen";
+    setDrawTool("pen", true);
+    syncBuddyBtn();
     enterPlanIfNeeded();
     teachColor(play.tool);
     updateHud();
@@ -609,8 +712,6 @@
       var k = it.kind === "adapt" ? null : it.kind;
       if (k && KIND_TIP[k] && tipKinds.indexOf(k) < 0) tipKinds.push(k);
     });
-    hint = "Plan your lines, then press Start.";
-    hintUntil = play.t + 8;
     items.forEach(function (it) {
       var k = it.kind === "boss" ? "boss" : it.kind;
       if (k) teach("kind:" + (it.boss || k), kindTeachText(it.kind, it.boss));
@@ -632,6 +733,7 @@
     play.phase = "wave";
     play.waveClock = 0;
     hintUntil = play.t;
+    tryFullscreen();
     sfx("wave");
     floatText(sx(195), sy(36), "Wave " + play.waveIdx + "!", "#3a2a22");
     return true;
@@ -641,7 +743,7 @@
 
   function showScreen(name) {
     screen = name;
-    ["menu", "levels", "loadout", "how", "settings", "play"].forEach(function (s) {
+    ["menu", "levels", "loadout", "how", "settings", "play", "design"].forEach(function (s) {
       var el = document.getElementById("screen-" + s);
       if (el) el.classList.toggle("on", s === name);
     });
@@ -737,6 +839,7 @@
     if (!key || !text) return;
     if (!save.seenTips) save.seenTips = {};
     if (save.seenTips[key]) return;
+    if (save.settings && save.settings.tips === false) { save.seenTips[key] = true; persist(); return; }
     save.seenTips[key] = true;
     persist();
     calloutQueue.push({ key: key, text: text });
@@ -795,10 +898,7 @@
     document.getElementById("ink-num").textContent = ink + " / " + play.inkMax;
     document.getElementById("ink-fill").style.transform = "scaleX(" + (play.ink / play.inkMax) + ")";
     var lab = document.getElementById("ink-title");
-    if (lab) {
-      var liveOn = play.phase === "wave" && D().live > 1;
-      lab.textContent = liveOn ? "Ink budget  (wave drawing costs ×" + D().live + ")" : "Ink budget";
-    }
+    if (lab) lab.textContent = "Ink";
     document.getElementById("level-name").textContent = play.name;
     document.getElementById("house-hp").textContent = String(Math.max(0, Math.ceil(play.house.hp)));
     document.getElementById("star-count").textContent = String(play.starsHave);
@@ -821,13 +921,11 @@
     var waveMax = maxWave();
     var wc = document.getElementById("wave-count");
     if (wc) wc.textContent = String(play.endless ? play.wave : (play.phase === "plan" ? play.waveIdx + 1 : waveN));
-    if (play.ended === "win") wl.textContent = "What a doodle!";
-    else if (play.ended === "lose") wl.textContent = play.endless ? "Sketch over" : "Smudged…";
-    else if (play.endless) wl.textContent = "Wave " + Math.max(1, play.wave) + "  •  " + play.score;
-    else if (play.phase === "plan") wl.textContent = "Plan wave " + (play.waveIdx + 1) + " of " + waveMax;
-    else if (waveMax > 0) wl.textContent = (play.goal === "stars" ? "⭐" + play.starsHave + "/" + play.starsNeed + "  " : "") + "Wave " + waveN + " of " + waveMax;
-    else if (play.goal === "stars") wl.textContent = "Collect " + play.starsNeed + " stars";
-    else wl.textContent = "Protect the house";
+    if (play.ended === "win") wl.textContent = "Win!";
+    else if (play.ended === "lose") wl.textContent = "Lost";
+    else if (play.endless) wl.textContent = "W" + Math.max(1, play.wave);
+    else if (waveMax > 0) wl.textContent = (play.phase === "plan" ? "" : "") + (play.phase === "plan" ? play.waveIdx + 1 : waveN) + "/" + waveMax;
+    else wl.textContent = "";
     updatePlanPanel();
     updatePackets();
     updateLegend(play.tool);
@@ -852,9 +950,21 @@
     if (key === planKey) return;
     planKey = key;
     var txt = document.getElementById("plan-text");
-    txt.innerHTML = "<b>Wave " + (play.waveIdx + 1) + " of " + play.waves.length + " incoming</b>" +
-      sum.map(function (s) {
-        return "<div>" + s.n + "× " + s.name + (s.hint ? ' <span class="hint">— ' + s.hint + "</span>" : "") + "</div>";
+    var dots = {
+      scribble: "#5a4a62", jumper: "#5a7a4a", eater: "#c45a7a", splitter: "#6a5a88",
+      sneaky: "#4a6a88", armored: "#6a6a78", healer: "#3a9a62", flyer: "#b0689a",
+      tunneler: "#8a6a3a", thief: "#2c4788", splatter: "#3a2a22", shielder: "#c9a24a",
+      dasher: "#e08a2a", mimic: "#3d8fd8", boss: "#4a3a52", adapt: "#7a5a8a",
+    };
+    txt.innerHTML = "<div><b>Wave " + (play.waveIdx + 1) + " of " + play.waves.length + "</b></div>" +
+      '<div id="plan-icons">' + sum.map(function (s) {
+        var key = s.key.indexOf("boss:") === 0 ? "boss" : s.key;
+        var col = dots[key] || "#5a4a62";
+        return '<span class="pico" title="' + s.name + '"><span class="dot" style="background:' + col + '"></span>' + s.n + "× " + s.name + "</span>";
+      }).join("") + "</div>" +
+      sum.filter(function (s) { return s.hint; }).map(function (s) {
+        var tip = (s.key.indexOf("boss:") === 0) ? (BOSS_SCOUT[s.key.slice(5)] || s.hint) : (KIND_TIP[s.key] || (s.name + " " + s.hint + "."));
+        return '<div class="hint">' + tip + "</div>";
       }).join("");
   }
 
@@ -864,14 +974,23 @@
     var r = cv.getBoundingClientRect();
     if (!r.width || !r.height) return { x: 0, y: 0 };
     return {
-      x: (ev.clientX - r.left) * (cv.clientWidth / r.width),
-      y: (ev.clientY - r.top) * (cv.clientHeight / r.height),
+      x: (ev.clientX - r.left) / r.width * FIELD_W,
+      y: (ev.clientY - r.top) / r.height * FIELD_H,
     };
   }
   function liveMul() { return play && play.phase === "wave" ? D().live : 1; }
   function inkCostPerPx(color) {
     var c = color || (play && play.drawing ? play.drawing.color : play ? play.tool : "blue");
-    return BASE_COST * (COLOR_COST[c] || 1) * liveMul();
+    var tool = currentDrawTool();
+    return BASE_COST * (COLOR_COST[c] || 1) * (tool.cost || 1) * liveMul();
+  }
+  function currentDrawTool() {
+    var id = (play && play.drawTool) || "pen";
+    return DRAW_TOOLS[id] || DRAW_TOOLS.pen;
+  }
+  function strokeRad(st, base) {
+    var w = (st && st.width) || 9;
+    return Math.max(base || 12, w * 0.6);
   }
   function inBlot(x, y) {
     if (!play) return null;
@@ -886,10 +1005,17 @@
   function onFieldDown(ev) {
     if (!play || play.paused || play.ended) return;
     if (window.DDAudio) window.DDAudio.unlock();
+    tryFullscreen();
     ev.preventDefault();
     var p = evPos(ev);
+    var mimic = mimicAt(p.x, p.y);
+    if (mimic) { revealMimic(mimic); return; }
     var dr = dropAt(p.x, p.y);
     if (dr) { collectDrop(dr); return; }
+    if (play.placingBuddy) {
+      if (placeBuddyAt(p.x, p.y)) { play.placingBuddy = false; syncBuddyBtn(); }
+      return;
+    }
     if (play.placing) {
       var kind = play.placing;
       if (placeComp(kind, p.x, p.y)) { play.placing = null; syncTools(); updatePackets(); }
@@ -1008,10 +1134,13 @@
     var through = strokeThroughPuddle(pts, play.puddles);
     var tri = closed && isTriangle(pts);
     var len = polylineLen(pts);
+    var tool = currentDrawTool();
+    var baseHp = color === "green" ? 28 + len * 0.35 : (tool.highlight ? 10 + len * 0.12 : 0);
     var st = {
       id: seq++, color: color, pts: pts, closed: closed, triangle: tri,
       throughPuddle: through, length: len,
-      hp: color === "green" ? 28 + len * 0.35 : 0, maxHp: color === "green" ? 28 + len * 0.35 : 0,
+      tool: tool.id, width: color === "green" ? tool.width + 2 : tool.width, highlight: !!tool.highlight,
+      hp: baseHp * (tool.hpMul || 1), maxHp: baseHp * (tool.hpMul || 1),
       charges: color === "yellow" ? 8 : 0,
     };
     play.strokes.push(st);
@@ -1264,7 +1393,7 @@
   }
   function damageComp(c, amt) {
     if (!c || c.dead) return;
-    c.hp -= amt * (c.boost && c.boost.fence ? 0.6 : 1);
+    c.hp -= amt * (c.boost && c.boost.fence ? 0.6 : 1) * buddyGuardMul(c.x, c.y);
     c.hurt = 0.15;
     if (c.hp <= 0) removeComp(c, "chewed");
   }
@@ -1289,6 +1418,182 @@
     }
     return false;
   }
+
+  function highlightNear(m) {
+    if (!play) return false;
+    for (var i = 0; i < play.strokes.length; i++) {
+      var st = play.strokes[i];
+      if (!st.highlight) continue;
+      if (nearStroke(st, m.x, m.y, strokeRad(st, 22))) return true;
+    }
+    return false;
+  }
+  function shieldAuraAt(m) {
+    if (!play || m.kind === "shielder") return 1;
+    var mul = 1;
+    play.monsters.forEach(function (h) {
+      if (h.kind === "shielder" && h.hp > 0 && h !== m && dist(h, m) < 54) mul *= 0.5;
+    });
+    return mul;
+  }
+  function buddyGuardMul(x, y) {
+    if (!play) return 1;
+    var mul = 1;
+    play.buddies.forEach(function (b) {
+      if (b.hp <= 0) return;
+      var def = buddyStats(b);
+      if (def.shield && dist(b, { x: x, y: y }) < def.rad) mul *= (1 - def.shield);
+    });
+    return mul;
+  }
+  function mimicAt(x, y) {
+    if (!play) return null;
+    var best = null, bd = 26;
+    play.monsters.forEach(function (m) {
+      if (m.kind !== "mimic" || m.hp <= 0 || m.revealed) return;
+      var dd = dist(m, { x: x, y: y });
+      if (dd < bd) { bd = dd; best = m; }
+    });
+    return best;
+  }
+  function revealMimic(m) {
+    if (!m || m.revealed) return;
+    m.revealed = true;
+    m.disguised = false;
+    m.spd = m.baseSpd * 1.25;
+    puff(m.x, m.y, "#3d8fd8", 8);
+    floatText(m.x, m.y - 12, "Fake!", "#2c4788");
+    sfx("pop");
+    teach("kind:mimic", KIND_TIP.mimic);
+  }
+  function nearestDrop(m) {
+    var best = null, bd = 110;
+    play.drops.forEach(function (d) {
+      var dd = dist(m, d);
+      if (dd < bd) { bd = dd; best = d; }
+    });
+    return best;
+  }
+  function defaultDesigns() {
+    if (!save.designs || !save.designs.length) {
+      save.designs = [defaultDesign()];
+      save.activeDesign = 0;
+      persist();
+    }
+    return save.designs;
+  }
+  function buddyStats(b) {
+    var role = BUDDY_ROLES[b.role] || BUDDY_ROLES.poke;
+    var size = b.size === "sm" ? 0.8 : b.size === "lg" ? 1.25 : 1;
+    var spd = 56 * size;
+    var hp = 28 * size;
+    var dmg = (role.dmg || 0) * size;
+    var rad = (role.rad || 28) * size;
+    var cost = b.cost || designCost(b);
+    (b.traits || []).forEach(function (tr) {
+      var tdef = BUDDY_TRAITS[tr];
+      if (!tdef) return;
+      if (tdef.spd) spd *= tdef.spd;
+      if (tdef.hp) hp *= tdef.hp;
+    });
+    return {
+      spd: spd, hp: hp, dmg: dmg, rad: rad, cost: cost,
+      interval: role.interval || 0.8, heal: (role.heal || 0) * size,
+      slow: role.slow || 0, vacuum: (role.vacuum || 0) * size, shield: role.shield || 0, role: role.id,
+    };
+  }
+  function placeBuddyAt(x, y) {
+    if (!play) return null;
+    var designs = defaultDesigns();
+    var d = designs[save.activeDesign] || designs[0] || defaultDesign();
+    var st = null, best = 28;
+    play.strokes.forEach(function (s) {
+      var h = nearStroke(s, x, y, 28);
+      if (h && h.d < best) { best = h.d; st = s; }
+    });
+    if (!st) { showHint("Tap a line.", 1.6); sfx("dry"); return null; }
+    if (play.buddies.filter(function (b) { return b.hp > 0; }).length >= 3) { showHint("Three buddies max.", 1.8); sfx("dry"); return null; }
+    var stats = buddyStats(d);
+    if (play.ink < stats.cost) { showHint("Need " + stats.cost + " ink.", 1.8); sfx("dry"); return null; }
+    play.ink -= stats.cost;
+    var p0 = pointAtStroke(st, 10);
+    var b = {
+      id: seq++, color: d.color, face: d.face || "smile", size: d.size || "md",
+      role: d.role || "poke", traits: (d.traits || []).slice(),
+      strokeId: st.id, t: 10, dir: 1, x: p0.x, y: p0.y,
+      hp: stats.hp, max: stats.hp, cd: 0.2, cost: stats.cost,
+    };
+    play.buddies.push(b);
+    teach("buddy", "Buddy set! They patrol the line.");
+    puff(b.x, b.y, (CRAYON[b.color] || CRAYON.red).fill, 6);
+    sfx("place");
+    updateHud();
+    return b;
+  }
+  function tickBuddies(dt) {
+    if (!play) return;
+    play.buddies.forEach(function (b) {
+      if (b.hp <= 0) return;
+      var st = play.strokes.find(function (s) { return s.id === b.strokeId; });
+      if (!st) { b.hp = 0; return; }
+      var stats = buddyStats(b);
+      var L = st.length || 1;
+      b.t += b.dir * stats.spd * dt;
+      if (b.t > L - 8) { b.t = L - 8; b.dir = -1; }
+      if (b.t < 8) { b.t = 8; b.dir = 1; }
+      var p = pointAtStroke(st, b.t);
+      b.x = p.x; b.y = p.y;
+      b.cd -= dt;
+      if (stats.dmg && b.cd <= 0) {
+        var hit = null, bd = 26 * (b.size === "lg" ? 1.2 : 1);
+        play.monsters.forEach(function (m) {
+          if (m.hp <= 0 || m.leaked || m.tunnel > 0) return;
+          if (m.kind === "flyer") return;
+          if (m.kind === "mimic" && !m.revealed) return;
+          var dd = dist(b, m);
+          if (dd < bd) { bd = dd; hit = m; }
+        });
+        if (hit) {
+          if (hit.kind === "mimic" && !hit.revealed) revealMimic(hit);
+          hurtMonster(hit, stats.dmg, "tickle");
+          puff(hit.x, hit.y, (CRAYON[b.color] || CRAYON.red).fill, 2);
+          b.cd = stats.interval;
+        }
+      }
+      if (stats.heal && b.cd <= 0) {
+        play.strokes.forEach(function (s) {
+          if (s.maxHp && s.hp < s.maxHp && nearStroke(s, b.x, b.y, 26)) {
+            s.hp = Math.min(s.maxHp, s.hp + stats.heal);
+          }
+        });
+        b.cd = stats.interval;
+      }
+      if (stats.vacuum) {
+        play.drops.slice().forEach(function (d) {
+          if (dist(b, d) < stats.vacuum) collectDrop(d);
+        });
+      }
+    });
+    play.buddies = play.buddies.filter(function (b) { return b.hp > 0; });
+  }
+  function syncBuddyBtn() {
+    var b = document.getElementById("btn-buddy");
+    if (!b || !play) return;
+    b.classList.toggle("sel", !!play.placingBuddy);
+    var d = (defaultDesigns()[save.activeDesign] || defaultDesign());
+    var role = BUDDY_ROLES[d.role] || BUDDY_ROLES.poke;
+    b.textContent = role.name + " " + designCost(d);
+  }
+  function setDrawTool(id, silent) {
+    if (!DRAW_TOOLS[id] || !play) return;
+    play.drawTool = id;
+    Array.prototype.forEach.call(document.querySelectorAll("#draw-tools .dtool"), function (el) {
+      el.classList.toggle("sel", el.getAttribute("data-draw") === id);
+    });
+    if (!silent) teach("draw:" + id, DRAW_TOOLS[id].teach);
+    updateLegend(play.tool);
+  }
+
   function spawnDrop(c) {
     var def = COMPS[c.kind];
     var a = rng() * Math.PI * 2;
@@ -1299,8 +1604,8 @@
       life: 10, max: 10, bob: rng() * 6,
     });
     sfx("drip");
-    teach("drop", "Ink drop! Tap it to collect the ink before it fades away.");
-    hintOnce("drop", "Ink drop! Tap it to collect.");
+    teach("drop", "Ink drop! Tap it to collect.");
+    puff(play.drops[play.drops.length - 1].x, play.drops[play.drops.length - 1].y, "#3d8fd8", 6);
   }
   function dropAt(x, y) {
     if (!play) return null;
@@ -1318,6 +1623,8 @@
     var before = play.ink;
     play.ink = Math.min(play.inkMax, play.ink + d.v);
     play.collected += d.v;
+    puff(d.x, d.y, "#3d8fd8", 8);
+    floatText(d.x, d.y - 8, "+" + Math.round(d.v), "#2c4788");
     floatText(d.x, d.y - 8, "+" + d.v + " ink", "#2c4788");
     puff(d.x, d.y, "#6a8fe0", 5);
     sfx("collect");
@@ -1333,7 +1640,7 @@
   function fireSharpener(c) {
     var def = COMPS.sharpener, best = null, bd = def.range;
     play.monsters.forEach(function (m) {
-      if (m.hp <= 0 || m.kind === "flyer" || !monsterVisible(m)) return;
+      if (m.hp <= 0 || m.kind === "flyer" || m.tunnel > 0 || !monsterVisible(m)) return;
       var d = dist(m, c);
       if (d < bd) { bd = d; best = m; }
     });
@@ -1574,6 +1881,8 @@
     tickPads(dt);
     tickComps(dt);
     tickMonsters(dt);
+    tickBuddies(dt);
+    if (play.shake > 0) play.shake = Math.max(0, play.shake - dt * 3.2);
     tickFx(dt);
     checkWaveClear();
     checkEnd();
@@ -1631,6 +1940,8 @@
     if (blues < 1) picks.push("sneaky", "sneaky");
     if (play.pads.length === 0 && play.strokes.length >= 2) picks.push("flyer", "flyer");
     if (play.combos.length >= 2) picks.push("healer");
+    if (play.drops.length) picks.push("thief");
+    if (play.waveIdx >= 2 || (play.endless && play.wave >= 4)) picks.push("dasher", "tunneler");
     return picks[Math.floor(rng() * picks.length)];
   }
   function maybeEndlessWave() {
@@ -1642,13 +1953,15 @@
     if (play.diff === "hard") n += 1;
     if (play.diff === "nightmare") n += 2;
     if (play.diff === "easy") n = Math.max(2, n - 1);
-    if (n > 8) n = 8;
+    if (n > 12) n = 12;
     var kinds = ["scribble"];
     if (play.wave >= 2) kinds.push("jumper");
     if (play.wave >= 3) kinds.push("splitter", "armored");
     if (play.wave >= 4) kinds.push("eater");
     if (play.wave >= 5) kinds.push("sneaky", "flyer");
     if (play.wave >= 6) kinds.push("healer");
+    if (play.wave >= 7) kinds.push("dasher", "tunneler", "thief");
+    if (play.wave >= 9) kinds.push("shielder", "splatter", "mimic");
     var w = fieldSize().w;
     for (var i = 0; i < n; i++) {
       var kind = (play.wave >= 3 && rng() < 0.4) ? adaptKind() : kinds[Math.floor(rng() * kinds.length)];
@@ -1672,7 +1985,7 @@
     var spd = opts.spd != null ? opts.spd : base.spd * d.spd;
     var squiggle = [];
     var seed = seq * 17;
-    var big = kind === "boss" ? 1.7 : (opts.tiny ? 0.7 : 1);
+    var big = kind === "boss" ? 1.7 : (opts.tiny || kind === "dasher" ? 0.7 : 1);
     for (var i = 0; i < 10; i++) {
       squiggle.push({
         x: Math.sin(seed * 0.7 + i * 1.7) * 10 * big,
@@ -1690,6 +2003,7 @@
       tiny: !!opts.tiny, scale: big, phase: 0, armor: false, teleCd: 0,
       path: path, pi: opts.pi != null ? opts.pi : 1, lane: opts.lane != null ? opts.lane : -1,
       canHop: kind === "jumper" || boss === "hidey", chewTime: boss === "nibble" ? 1.5 : 1.3, leaked: false,
+      tunnel: 0, disguised: kind === "mimic", revealed: kind !== "mimic",
     };
     play.monsters.push(m);
     if (kind === "boss") enterBossPhase(m, 1);
@@ -1856,8 +2170,10 @@
   }
 
   function monsterVisible(m) {
+    if (m.kind === "mimic" && !m.revealed) return false;
+    if (m.tunnel > 0) return false;
     if (m.kind !== "sneaky" && !(m.kind === "boss" && m.stealthed)) return true;
-    if (touchingColor(m, "blue", 22)) return true;
+    if (touchingColor(m, "blue", 22) || highlightNear(m)) return true;
     if (inPuddle(m.x, m.y, play.puddles)) return true;
     for (var i = 0; i < play.combos.length; i++) {
       var c = play.combos[i];
@@ -1970,7 +2286,7 @@
     }
     var hit = nearStroke(st, m.x, m.y, 22);
     if (hit) { m.breakHx = hit.x; m.breakHy = hit.y; }
-    st.hp -= breakRate(m) * dt;
+    st.hp -= breakRate(m) * dt * buddyGuardMul(m.x, m.y);
     m.breakT = (m.breakT || 0) + dt;
     m.breakPulse = (m.breakPulse || 0) + dt;
     if (m.breakPulse >= 0.7) {
@@ -2079,14 +2395,44 @@
           if (ct) { target = ct; m.compT = ct; }
         }
       }
+      if (m.kind === "thief") {
+        var drop = nearestDrop(m);
+        if (drop) {
+          target = drop;
+          if (dist(m, drop) < 18) {
+            var ix = play.drops.indexOf(drop);
+            if (ix >= 0) play.drops.splice(ix, 1);
+            m.hp = Math.min(m.max, m.hp + 4);
+            floatText(m.x, m.y - 10, "Stolen!", "#2c4788");
+            sfx("drip");
+          }
+        }
+      }
+      if (m.kind === "mimic" && !m.revealed) {
+        if (dist(m, house) < 80) revealMimic(m);
+      }
       var ddx = target.x - m.x, ddy = target.y - m.y;
       var ang = Math.atan2(ddy, ddx);
       ang += Math.sin(play.t * 0.8 + m.id) * (m.kind === "flyer" ? 0.12 : 0.22);
       var spd = m.spd;
+      if (m.kind === "mimic" && !m.revealed) spd *= 0.45;
       if (m.kind !== "flyer") {
         if (touchingColor(m, "blue", 16)) spd *= 0.45;
+        if (highlightNear(m)) spd *= 0.6;
         if (glueAt(m)) spd *= 0.35;
         if (inPuddle(m.x, m.y, play.puddles)) spd *= 0.7;
+        play.buddies.forEach(function (b) {
+          if (b.hp <= 0) return;
+          var def = buddyStats(b);
+          if (def.slow && dist(b, m) < def.rad) spd *= def.slow;
+        });
+      }
+      if (m.kind === "tunneler") {
+        if (m.tunnel > 0) m.tunnel -= dt;
+        else if (m.hopping <= 0 && vineAhead(m, ddx, ddy)) {
+          m.tunnel = 1.15;
+          puff(m.x, m.y, "#8a6a3a", 4);
+        }
       }
       if (m.canHop && m.hopping <= 0) {
         m.hopCd -= dt;
@@ -2120,7 +2466,7 @@
       var vy = Math.sin(ang) * spd;
       var nx = m.x + vx * dt;
       var ny = m.y + vy * dt;
-      var wall = (m.hopping > 0 || m.kind === "flyer") ? null : vineHit(nx, ny, 13);
+      var wall = (m.hopping > 0 || m.kind === "flyer" || (m.tunnel && m.tunnel > 0)) ? null : vineHit(nx, ny, 13);
       if (m.breaking && m.kind !== "flyer" && m.hopping <= 0 && shouldChewWall(m, m.breakSt)) {
         tickBreak(m, dt);
         if (m.breaking) {
@@ -2177,7 +2523,7 @@
           puff(cc.x, cc.y, "#e0a060", 3);
         }
       }
-      var busy = !!(m.breaking || m.hopping > 0 || compChew || (seekingLine && m.chewTarget));
+      var busy = !!(m.breaking || m.hopping > 0 || compChew || (seekingLine && m.chewTarget) || (m.tunnel && m.tunnel > 0));
       if ((m.stillT || 0) > 1.2 && !busy && m.kind !== "flyer") {
         var w2 = vineAhead(m, target.x - m.x, target.y - m.y) || vineHit(m.x, m.y, 26);
         if (w2) {
@@ -2315,7 +2661,7 @@
     for (var i = 0; i < play.strokes.length; i++) {
       var st = play.strokes[i];
       if (st.color !== color) continue;
-      if (nearStroke(st, m.x, m.y, rad)) return true;
+      if (nearStroke(st, m.x, m.y, strokeRad(st, rad))) return true;
     }
     return false;
   }
@@ -2324,7 +2670,7 @@
     for (var i = 0; i < play.strokes.length; i++) {
       var st = play.strokes[i];
       if (st.color !== "green") continue;
-      var h = nearStroke(st, x, y, rad);
+      var h = nearStroke(st, x, y, strokeRad(st, rad));
       if (h && (!best || h.d < best.d)) { best = h; bst = st; }
     }
     if (best) best.st = bst;
@@ -2334,13 +2680,20 @@
   function hurtMonster(m, dmg, reason) {
     if (!m || m.hp <= 0) return;
     if (m.kind === "flyer" && reason !== "launch" && reason !== "splash") return;
+    if (m.kind === "mimic" && !m.revealed && reason !== "splash") { revealMimic(m); }
+    if (m.tunnel > 0 && reason !== "splash") return;
     if (!monsterVisible(m) && reason !== "splash") return;
     if (reason === "tickle" && (m.kind === "armored" || m.armor)) dmg *= 0.15;
     if (reason === "splash" && (m.kind === "armored" || m.armor)) dmg *= 0.35;
     if (reason === "splash" && m.kind === "flyer") dmg *= 0.5;
     if (reason === "shave" && (m.kind === "armored" || m.armor)) dmg *= 0.3;
+    if (reason !== "splash") dmg *= shieldAuraAt(m);
     m.hp -= dmg;
     m.hurt = 0.15;
+    if (m.kind === "boss") {
+      play.shake = Math.max(play.shake || 0, 0.32);
+      puff(m.x, m.y, "#4a3a52", 5);
+    } else if (dmg > 1) puff(m.x, m.y, "#fff3a0", 2);
     if (m.kind === "splitter" && !m.hasSplit && m.hp <= m.max * 0.5 && m.hp > 0) {
       splitMonster(m);
       return;
@@ -2367,6 +2720,10 @@
     puff(m.x, m.y, "#c8c0d0", 10);
     floatText(m.x, m.y - 12, "Dizzy!", "#5a4a62");
     sfx("pop");
+    if (m.kind === "splatter") {
+      play.blots.push({ x: m.x, y: m.y, r: 16 });
+      floatText(m.x, m.y - 20, "Blot!", "#3a2a22");
+    }
     play.ink = Math.min(play.inkMax, play.ink + D().kill);
     if (play.endless) play.score += m.kind === "boss" ? 50 : 10;
   }
@@ -2551,26 +2908,40 @@
     cv.width = w;
     cv.height = h;
     var ctx = cv.getContext("2d");
-    ctx.fillStyle = "#f7edd4";
+    ctx.fillStyle = "#f7f1e0";
     ctx.fillRect(0, 0, w, h);
     var img = ctx.getImageData(0, 0, w, h);
     var d = img.data;
     for (var i = 0; i < d.length; i += 4) {
       var n = (Math.sin(i * 12.9898) * 43758.5453) % 1;
       if (n < 0) n += 1;
-      var k = (n - 0.5) * 18;
+      var k = (n - 0.5) * 12;
       d[i] = clamp(d[i] + k, 0, 255);
-      d[i + 1] = clamp(d[i + 1] + k * 0.9, 0, 255);
-      d[i + 2] = clamp(d[i + 2] + k * 0.7, 0, 255);
+      d[i + 1] = clamp(d[i + 1] + k * 0.85, 0, 255);
+      d[i + 2] = clamp(d[i + 2] + k * 0.6, 0, 255);
     }
     ctx.putImageData(img, 0, 0);
-    ctx.fillStyle = "rgba(180, 150, 110, 0.18)";
-    for (var y = 14; y < h; y += 22) {
-      for (var x = 12; x < w; x += 22) {
-        ctx.beginPath();
-        ctx.arc(x, y, 1.1, 0, Math.PI * 2);
-        ctx.fill();
-      }
+    var margin = Math.max(28, w * 0.08);
+    ctx.strokeStyle = "rgba(214, 90, 90, 0.55)";
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(margin, 0);
+    ctx.lineTo(margin, h);
+    ctx.stroke();
+    ctx.strokeStyle = "rgba(120, 160, 200, 0.38)";
+    ctx.lineWidth = 1;
+    var gap = Math.max(22, Math.round(h / 28));
+    for (var y = gap; y < h; y += gap) {
+      ctx.beginPath();
+      ctx.moveTo(0, y + 0.5);
+      ctx.lineTo(w, y + 0.5);
+      ctx.stroke();
+    }
+    ctx.fillStyle = "rgba(180, 70, 70, 0.28)";
+    for (var hy = gap * 2; hy < h; hy += gap * 4) {
+      ctx.beginPath();
+      ctx.arc(margin * 0.45, hy, Math.max(3, margin * 0.12), 0, Math.PI * 2);
+      ctx.fill();
     }
     paperTex = { cv: cv, w: w, h: h };
     return cv;
@@ -2578,16 +2949,21 @@
 
   function paint() {
     var scene = document.getElementById("scene");
-    var sctx = sizeCanvas(scene, DESIGN_W, DESIGN_H);
+    var sz = stageSize();
+    var sctx = sizeCanvas(scene, sz.w, sz.h);
     if (screen === "play") {
-      sctx.drawImage(ensurePaper(DESIGN_W, DESIGN_H), 0, 0);
+      sctx.drawImage(ensurePaper(sz.w, sz.h), 0, 0, sz.w, sz.h);
       var field = document.getElementById("field");
       var fw = field.clientWidth || FIELD_W;
       var fh = field.clientHeight || FIELD_H;
       var fctx = sizeCanvas(field, fw, fh);
-      drawField(fctx, fw, fh);
+      fctx.scale(fw / FIELD_W, fh / FIELD_H);
+      drawField(fctx, FIELD_W, FIELD_H);
     } else {
+      sctx.save();
+      sctx.scale(sz.w / DESIGN_W, sz.h / DESIGN_H);
       drawMenuScene(sctx, DESIGN_W, DESIGN_H, menuT);
+      sctx.restore();
     }
   }
 
@@ -2638,9 +3014,14 @@
   }
 
   function drawField(ctx, w, h) {
-    ctx.drawImage(ensurePaper(DESIGN_W, DESIGN_H), 0, 0, w, h);
+    ctx.drawImage(ensurePaper(w, h), 0, 0, w, h);
     var t = play ? play.t : menuT;
     if (!play) return;
+    if (play.shake > 0) {
+      var amp = play.shake * 7;
+      ctx.save();
+      ctx.translate((rng() - 0.5) * amp * 2, (rng() - 0.5) * amp * 2);
+    }
     play.stains.forEach(function (s) { drawStain(ctx, s, t); });
     play.blots.forEach(function (b) { drawBlot(ctx, b, t); });
     drawLanes(ctx, t);
@@ -2651,7 +3032,7 @@
     play.strokes.forEach(function (st) {
       var folded = strokeFolded(st);
       if (folded) ctx.globalAlpha = 0.28;
-      crayonStroke(ctx, st.pts, st.color, st.color === "green" ? 11 : 9, st.id);
+      crayonStroke(ctx, st.pts, st.color, st.width || (st.color === "green" ? 11 : 9), st.id, st);
       if (st.color === "green") { vineTicks(ctx, st); if (st.hp > 0 && st.maxHp && st.hp < st.maxHp * 0.85) vineCracks(ctx, st); }
       if (st.color === "yellow") zapTicks(ctx, st, t);
       if (st.color === "purple") purpleEnds(ctx, st, t);
@@ -2661,8 +3042,9 @@
     play.pads.forEach(function (p) { drawPad(ctx, p, t); });
     drawComps(ctx, t);
     if (play.drawing && play.drawing.pts.length) {
-      crayonStroke(ctx, play.drawing.pts, play.drawing.color, 9, 99);
+      crayonStroke(ctx, play.drawing.pts, play.drawing.color, currentDrawTool().width, 99, { highlight: currentDrawTool().highlight, width: currentDrawTool().width });
     }
+    play.buddies.forEach(function (b) { if (b.hp > 0) drawBuddy(ctx, b, t); });
     drawHouse(ctx, play.house.x, play.house.y, play.house.hp, play.house.max, t, false);
     play.critters.forEach(function (c) {
       var inP = c.swim && inPuddle(c.x, c.y, play.puddles);
@@ -2712,6 +3094,19 @@
       ctx.fillText(f.text, f.x, f.y);
       ctx.globalAlpha = 1;
     });
+    play.monsters.forEach(function (m) {
+      if (m.kind === "shielder" && m.hp > 0) {
+        ctx.save();
+        ctx.strokeStyle = "rgba(201,162,74,0.45)";
+        ctx.setLineDash([4, 4]);
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(m.x, m.y, 54, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+    });
+    if (play.shake > 0) ctx.restore();
   }
 
 
@@ -3046,12 +3441,25 @@
     });
   }
 
-  function crayonStroke(ctx, pts, color, width, seed) {
+  function crayonStroke(ctx, pts, color, width, seed, st) {
     if (!pts || pts.length < 2) return;
     var pal = CRAYON[color] || CRAYON.blue;
+    var hi = !!(st && st.highlight);
     ctx.save();
     ctx.lineCap = "round";
     ctx.lineJoin = "round";
+    if (hi) {
+      ctx.strokeStyle = pal.fill;
+      ctx.globalAlpha = 0.38;
+      ctx.lineWidth = width;
+      strokeWobble(ctx, pts, seed, 0.4);
+      ctx.globalAlpha = 0.22;
+      ctx.strokeStyle = pal.dark;
+      ctx.lineWidth = width + 4;
+      strokeWobble(ctx, pts, seed + 2, 0.2);
+      ctx.restore();
+      return;
+    }
     ctx.strokeStyle = pal.dark;
     ctx.globalAlpha = 0.35;
     ctx.lineWidth = width + 3;
@@ -3065,6 +3473,44 @@
     ctx.lineWidth = Math.max(2, width * 0.28);
     strokeWobble(ctx, pts, seed + 7, 0.4, 0.6);
     ctx.restore();
+  }
+  function drawBuddy(ctx, b, t) {
+    var pal = CRAYON[b.color] || { fill: "#e08a2a", dark: "#8a4a12" };
+    if (b.color === "orange") pal = { fill: "#e08a2a", dark: "#8a4a12" };
+    var s = b.size === "sm" ? 0.82 : b.size === "lg" ? 1.25 : 1;
+    ctx.save();
+    ctx.translate(b.x, b.y);
+    ctx.scale(s, s);
+    ctx.fillStyle = pal.fill;
+    ctx.strokeStyle = pal.dark;
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.arc(0, 0, 11, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = "#3a2a22";
+    if (b.face === "wink") {
+      ctx.beginPath(); ctx.arc(-3.5, -2, 1.3, 0, Math.PI * 2); ctx.fill();
+      ctx.lineWidth = 1.4; ctx.beginPath(); ctx.moveTo(1.5, -2.5); ctx.lineTo(5, -1.5); ctx.stroke();
+    } else if (b.face === "grit") {
+      ctx.beginPath(); ctx.arc(-3.5, -2.5, 1.4, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(3.5, -2.5, 1.4, 0, Math.PI * 2); ctx.fill();
+      ctx.lineWidth = 1.6; ctx.beginPath(); ctx.moveTo(-3, 3); ctx.lineTo(3, 3); ctx.stroke();
+    } else if (b.face === "calm") {
+      ctx.beginPath(); ctx.arc(-3.5, -1.5, 1.2, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(3.5, -1.5, 1.2, 0, Math.PI * 2); ctx.fill();
+      ctx.lineWidth = 1.4; ctx.beginPath(); ctx.arc(0, 3, 3, 0.15, Math.PI - 0.15); ctx.stroke();
+    } else if (b.face === "star") {
+      ctx.beginPath(); ctx.arc(-3.5, -2, 1.3, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(3.5, -2, 1.3, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#ffe17a"; ctx.beginPath(); ctx.arc(0, 3.2, 2.1, 0, Math.PI * 2); ctx.fill();
+    } else {
+      ctx.beginPath(); ctx.arc(-3.5, -2, 1.4, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(3.5, -2, 1.4, 0, Math.PI * 2); ctx.fill();
+      ctx.lineWidth = 1.5; ctx.beginPath(); ctx.arc(0, 2, 4, 0.15, Math.PI - 0.15); ctx.stroke();
+    }
+    ctx.restore();
+    if (b.hp < b.max) miniBar(ctx, b.x, b.y + 14 * s, b.hp / b.max);
   }
   function strokeWobble(ctx, pts, seed, amp, shift) {
     shift = shift || 0;
@@ -3323,6 +3769,30 @@
   }
 
   function drawMonster(ctx, x, y, t, m) {
+    if (m.kind === "mimic" && !m.revealed) {
+      ctx.save();
+      ctx.translate(x, y + Math.sin((t + (m.id || 0)) * 3) * 1.5);
+      ctx.fillStyle = "#3d8fd8";
+      ctx.strokeStyle = "#245f96";
+      ctx.lineWidth = 1.8;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 7, 9, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = "rgba(255,255,255,0.45)";
+      ctx.beginPath(); ctx.ellipse(-2, -3, 2, 2.6, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      return;
+    }
+    if (m.kind === "tunneler" && m.tunnel > 0) {
+      ctx.save();
+      ctx.globalAlpha = 0.45;
+      ctx.translate(x, y + 6);
+      ctx.fillStyle = "#8a6a3a";
+      ctx.beginPath(); ctx.ellipse(0, 0, 10, 5, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      return;
+    }
     ctx.save();
     var sc = m.scale || 1;
     var fly = m.kind === "flyer" ? -14 + Math.sin(t * 7 + (m.id || 0)) * 3 : 0;
@@ -3348,6 +3818,12 @@
     if (m.kind === "armored") ink = "#6a6a78";
     if (m.kind === "healer") ink = "#3a9a62";
     if (m.kind === "flyer") ink = "#b0689a";
+    if (m.kind === "tunneler") ink = "#8a6a3a";
+    if (m.kind === "thief") ink = "#2c4788";
+    if (m.kind === "splatter") ink = "#3a2a22";
+    if (m.kind === "shielder") ink = "#c9a24a";
+    if (m.kind === "dasher") ink = "#e08a2a";
+    if (m.kind === "mimic") ink = "#3d8fd8";
     ctx.strokeStyle = ink;
     ctx.lineWidth = m.kind === "boss" ? 4 : 3;
     ctx.lineCap = "round";
@@ -3496,6 +3972,102 @@
     paint();
   }
 
+  var draftDesign = defaultDesign();
+  var designReturn = "menu";
+  var designSlotPick = 0;
+  function openDesigner(from) {
+    designReturn = from || "menu";
+    defaultDesigns();
+    while (save.designs.length < 3) save.designs.push(defaultDesign());
+    draftDesign = jsonCopy(save.designs[save.activeDesign] || defaultDesign());
+    designSlotPick = save.activeDesign || 0;
+    renderDesigner();
+    showScreen("design");
+    teach("design", "Design a buddy, then send them along a line.");
+  }
+  function closeDesigner() {
+    if (designReturn === "play" && play) {
+      showScreen("play");
+      play.paused = false;
+    } else if (designReturn === "loadout") showScreen("loadout");
+    else showScreen("menu");
+    designReturn = "menu";
+  }
+  function saveDraftToSlot() {
+    defaultDesigns();
+    while (save.designs.length < 3) save.designs.push(defaultDesign());
+    save.designs[designSlotPick] = jsonCopy(draftDesign);
+    save.activeDesign = designSlotPick;
+    persist();
+    renderDesigner();
+  }
+  function renderDesigner() {
+    var costEl = document.getElementById("design-cost");
+    if (costEl) costEl.textContent = designCost(draftDesign) + " ink";
+    function fill(id, items, attr) {
+      var root = document.getElementById(id);
+      if (!root) return;
+      root.innerHTML = "";
+      items.forEach(function (it) {
+        var b = document.createElement("button");
+        var key = typeof it === "string" ? it : it.id;
+        var lab = typeof it === "string" ? it : it.name;
+        b.textContent = lab;
+        if (id === "design-colors") {
+          b.className = "swatch-btn";
+          b.style.background = (key === "orange") ? "#e08a2a" : (CRAYON[key] || { fill: "#e08a2a" }).fill;
+          b.textContent = "";
+        }
+        var on = (attr === "traits") ? (draftDesign.traits || []).indexOf(key) >= 0 : draftDesign[attr] === key;
+        b.classList.toggle("on", on);
+        b.setAttribute("data-testid", id.replace("design-", "d-") + "-" + key);
+        b.addEventListener("click", function () {
+          if (attr === "traits") {
+            var tr = draftDesign.traits ? draftDesign.traits.slice() : [];
+            var i = tr.indexOf(key);
+            if (i >= 0) tr.splice(i, 1);
+            else if (tr.length < 2) tr.push(key);
+            draftDesign.traits = tr;
+          } else {
+            draftDesign[attr] = key;
+          }
+          renderDesigner();
+        });
+        root.appendChild(b);
+      });
+    }
+    fill("design-colors", BUDDY_COLORS, "color");
+    fill("design-faces", BUDDY_FACES, "face");
+    fill("design-sizes", [{ id: "sm", name: "Small" }, { id: "md", name: "Medium" }, { id: "lg", name: "Large" }], "size");
+    fill("design-roles", Object.keys(BUDDY_ROLES).map(function (k) { return BUDDY_ROLES[k]; }), "role");
+    fill("design-traits", Object.keys(BUDDY_TRAITS).map(function (k) { return BUDDY_TRAITS[k]; }), "traits");
+    var slots = document.getElementById("design-slots");
+    if (slots) {
+      slots.innerHTML = "";
+      for (var i = 0; i < 3; i++) {
+        var b = document.createElement("button");
+        b.className = "dslot" + (designSlotPick === i ? " on" : "");
+        b.textContent = "Slot " + (i + 1);
+        b.setAttribute("data-testid", "dslot-" + i);
+        b.addEventListener("click", function (ii) { return function () { designSlotPick = ii; if (save.designs[ii]) draftDesign = jsonCopy(save.designs[ii]); renderDesigner(); }; }(i));
+        slots.appendChild(b);
+      }
+    }
+    var cv = document.getElementById("design-preview");
+    if (cv) {
+      var ctx = cv.getContext("2d");
+      ctx.clearRect(0, 0, cv.width, cv.height);
+      ctx.save();
+      ctx.translate(cv.width / 2, cv.height / 2 + 10);
+      ctx.scale(2, 2);
+      drawBuddy(ctx, {
+        x: 0, y: 0, color: draftDesign.color, face: draftDesign.face, size: draftDesign.size,
+        role: draftDesign.role, hp: 1, max: 1,
+      }, 0);
+      ctx.restore();
+    }
+  }
+
   function bindUI() {
     document.getElementById("btn-play").addEventListener("click", function () {
       if (window.DDAudio) window.DDAudio.unlock();
@@ -3606,8 +4178,51 @@
     bindSeg("set-bat", function (v) { save.settings.battery = v; persist(); });
     bindSeg("set-sfx", function (v) { save.settings.sfx = v === "on"; persist(); applyAudioSettings(); });
     bindSeg("set-mus", function (v) { save.settings.music = v === "on"; persist(); applyAudioSettings(); });
+    bindSeg("set-tips", function (v) { save.settings.tips = v === "on"; persist(); });
     document.addEventListener("pointerdown", function () {
       if (window.DDAudio) window.DDAudio.unlock();
+    });
+    var fsBtn = document.getElementById("btn-fs");
+    if (fsBtn) fsBtn.addEventListener("click", function () { sfx("tap"); toggleFullscreen(); });
+    document.addEventListener("fullscreenchange", syncFsBtn);
+    document.addEventListener("webkitfullscreenchange", syncFsBtn);
+    Array.prototype.forEach.call(document.querySelectorAll("#draw-tools .dtool"), function (b) {
+      b.addEventListener("click", function () {
+        if (!play) return;
+        sfx("select");
+        setDrawTool(b.getAttribute("data-draw"));
+      });
+    });
+    var calloutEl = document.getElementById("callout");
+    if (calloutEl) calloutEl.addEventListener("click", function (ev) {
+      if (ev.target && ev.target.id === "btn-callout-ok") return;
+      dismissCallout();
+    });
+    var designBtn = document.getElementById("btn-design");
+    if (designBtn) designBtn.addEventListener("click", function () { sfx("tap"); openDesigner("menu"); });
+    var ldDes = document.getElementById("btn-loadout-design");
+    if (ldDes) ldDes.addEventListener("click", function () { sfx("tap"); openDesigner("loadout"); });
+    var miniDes = document.getElementById("btn-design-mini");
+    if (miniDes) miniDes.addEventListener("click", function () {
+      if (!play) return;
+      sfx("tap");
+      play.paused = true;
+      openDesigner("play");
+    });
+    var desBack = document.getElementById("btn-design-back");
+    if (desBack) desBack.addEventListener("click", function () { sfx("tap"); closeDesigner(); });
+    var desSave = document.getElementById("btn-design-save");
+    if (desSave) desSave.addEventListener("click", function () { sfx("tap"); saveDraftToSlot(); });
+    var buddyBtn = document.getElementById("btn-buddy");
+    if (buddyBtn) buddyBtn.addEventListener("click", function () {
+      if (!play || play.ended) return;
+      sfx("select");
+      play.placing = null;
+      play.placingBuddy = !play.placingBuddy;
+      syncTools();
+      syncBuddyBtn();
+      teach("buddy", "Buddy set! They patrol the line.");
+      updateLegend(play.tool);
     });
   }
   function bindSeg(id, fn) {
@@ -3637,6 +4252,7 @@
     set("set-bat", save.settings.battery);
     set("set-sfx", save.settings.sfx ? "on" : "off");
     set("set-mus", save.settings.music ? "on" : "off");
+    set("set-tips", (save.settings.tips !== false) ? "on" : "off");
   }
 
   function laneAt(L, d) {
@@ -3781,6 +4397,11 @@
       ink: play.ink,
       inkMax: play.inkMax,
       tool: play.tool,
+      drawTool: play.drawTool || "pen",
+      placingBuddy: !!play.placingBuddy,
+      buddies: (play.buddies || []).map(function (b) {
+        return { id: b.id, x: b.x, y: b.y, hp: b.hp, role: b.role, color: b.color, strokeId: b.strokeId };
+      }),
       phase: play.phase,
       drawing: !!(play.drawing && play.drawing.pts.length),
       drawPts: play.drawing ? play.drawing.pts.length : 0,
@@ -3824,7 +4445,7 @@
       placed: play.placed,
       inkBonus: play.inkBonus,
       strokes: play.strokes.map(function (s) {
-        return { id: s.id, color: s.color, closed: s.closed, triangle: !!s.triangle, throughPuddle: s.throughPuddle, length: s.length, n: s.pts.length, hp: s.hp, charges: s.charges };
+        return { id: s.id, color: s.color, tool: s.tool || "pen", width: s.width, highlight: !!s.highlight, closed: s.closed, triangle: !!s.triangle, throughPuddle: s.throughPuddle, length: s.length, n: s.pts.length, hp: s.hp, charges: s.charges };
       }),
       critters: play.critters.map(function (c) {
         return { id: c.id, color: c.color, strokeId: c.strokeId, t: c.t, x: c.x, y: c.y, launch: c.launch || 0 };
@@ -3833,7 +4454,7 @@
         return {
           id: m.id, kind: m.kind, boss: m.boss || null, x: m.x, y: m.y, hp: m.hp, max: m.max,
           phase: m.phase || 0, armor: !!m.armor, hopping: !!(m.hopping > 0), visible: monsterVisible(m),
-          chew: m.chew || 0, tiny: !!m.tiny, leaked: !!m.leaked, lane: m.lane, breaking: !!m.breaking, stillT: m.stillT || 0, stun: m.stun || 0, chewingComp: !!m.compChewing,
+          chew: m.chew || 0, tiny: !!m.tiny, leaked: !!m.leaked, lane: m.lane, breaking: !!m.breaking, stillT: m.stillT || 0, stun: m.stun || 0, chewingComp: !!m.compChewing, tunnel: m.tunnel || 0, revealed: m.revealed !== false, disguised: !!m.disguised,
           detour: m.detour ? { x: m.detour.x, y: m.detour.y, pathLen: m.detour.pathLen } : null,
         };
       }),
@@ -3865,6 +4486,19 @@
     screen: function () { return screen; },
     state: snapshot,
     setTool: function (id) { if (play && crayonUnlocked(id)) { play.tool = id; syncTools(); teachColor(id); } },
+    setDrawTool: setDrawTool,
+    drawTools: DRAW_TOOLS,
+    spawnBuddy: function (x, y) { return play ? placeBuddyAt(x, y) : null; },
+    openDesigner: function () { openDesigner("menu"); },
+    designCost: designCost,
+    designs: function () { return jsonCopy(defaultDesigns()); },
+    setDesign: function (d, slot) {
+      defaultDesigns();
+      var i = slot == null ? (save.activeDesign || 0) : slot;
+      save.designs[i] = d;
+      save.activeDesign = i;
+      persist();
+    },
     setInk: function (n) { if (play) { play.ink = clamp(n, 0, play.inkMax); updateHud(); } },
     setTimeScale: function (n) { timeScale = Math.max(0.1, n); },
     setHouseHp: function (n) { if (play) { play.house.hp = n; updateHud(); } },
@@ -3943,6 +4577,7 @@
   function boot() {
     fitStage();
     window.addEventListener("resize", fitStage);
+    window.addEventListener("orientationchange", function () { setTimeout(fitStage, 80); });
     applyAudioSettings();
     syncSettingButtons();
     renderCodexComps();
