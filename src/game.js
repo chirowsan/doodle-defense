@@ -28,6 +28,7 @@
     nightmare: false,
     settings: { diff: "normal", battery: "auto", sfx: true, music: true },
     seenTips: {},
+    loadout: [],
   };
 
   var save = loadSave();
@@ -82,6 +83,7 @@
         out.settings.diff = "normal";
       }
       if (s.seenTips && typeof s.seenTips === "object") out.seenTips = s.seenTips;
+      if (Array.isArray(s.loadout)) out.loadout = s.loadout.filter(function (k) { return typeof k === "string"; });
       return out;
     } catch (e) {
       return jsonCopy(DEFAULT_SAVE);
@@ -324,8 +326,8 @@
   /* ---------- tuning ---------- */
   var DIFF_ORDER = ["easy", "normal", "hard", "nightmare"];
   var DIFFS = {
-    easy:      { lives: 5, ink: 1.5,  refill: 3.0,  hp: 0.8,  spd: 0.9,  kill: 3,   live: 1.0, bonus: 1.5, esc: 0 },
-    normal:    { lives: 3, ink: 1.0,  refill: 0.12, hp: 1.25, spd: 1.0,  kill: 0.6, live: 1.5, bonus: 0.5, esc: 0.16 },
+    easy:      { lives: 5, ink: 1.5,  refill: 1.6,  hp: 0.8,  spd: 0.9,  kill: 2,   live: 1.0, bonus: 1.5, esc: 0 },
+    normal:    { lives: 3, ink: 1.0,  refill: 0.03, hp: 1.25, spd: 1.0,  kill: 0.4, live: 1.5, bonus: 0.5, esc: 0.16 },
     hard:      { lives: 2, ink: 0.85, refill: 0,    hp: 1.5,  spd: 1.15, kill: 0.2, live: 1.8, bonus: 0.25, esc: 0.16 },
     nightmare: { lives: 1, ink: 0.7,  refill: 0,    hp: 1.9,  spd: 1.3,  kill: 0,   live: 2.2, bonus: 0.1, esc: 0.2 },
   };
@@ -378,6 +380,56 @@
     nibble: "chews your lines, then more of them — use decoys and thorns",
     hidey: "hides, then calls flyers and a healer — use blue and a launch pad",
   };
+
+  /* ---------- components: ink makers and helpers (doodle449) ---------- */
+  var COMP_ORDER = ["inkwell", "decoy", "sharpener", "glue", "bumper", "reservoir"];
+  var INK_SCALE = 0.8;
+  // Per-page balance: starting ink (x level ink) and monster toughness. Later pages give less starting ink,
+  // so Inkwells (and kill / wave-clear bonuses) matter more; star pages need a fixed route so they keep more ink.
+  var INK_BY_PAGE = { 1: 0.85, 2: 0.85, 3: 0.85, 4: 0.85, 5: 0.85, 6: 0.85, 7: 0.7, 8: 0.7, 9: 0.95, 10: 0.6, 11: 0.6, 12: 0.7, 13: 0.5, 14: 0.5, 15: 0.6, 16: 1.0, 17: 0.6, 18: 0.65 };
+  var HP_BY_PAGE = { 7: 1, 8: 1.3, 9: 1.3, 10: 1.3, 11: 1.3, 12: 1.3, 13: 1.8, 14: 1.8, 15: 1.8, 16: 1, 17: 1.8, 18: 1.3 };
+  function inkScaleFor(id) { return INK_BY_PAGE[id] != null ? INK_BY_PAGE[id] : INK_SCALE; }
+  function hpMulFor(id) { return HP_BY_PAGE[id] != null ? HP_BY_PAGE[id] : 1; }
+  var COMPS = {
+    inkwell: {
+      name: "Inkwell", role: "Makes ink", cost: 20, step: 8, max: 4, cd: 6, hp: 42, aggro: 64, minPage: 1, period: 8, drop: 14, start: 4,
+      line: "Inkwell: slowly fills, then drops ink. Tap the drops! Monsters chew it.",
+      teach: "Inkwells make ink. While a wave runs it slowly fills and drops ink: tap the drop before it fades. Keep it away from the trails, or monsters will chew it.",
+      power: "Touching a blue line waters it: it fills 50% faster."
+    },
+    decoy: {
+      name: "Decoy", role: "Lures", cost: 14, step: 0, max: 3, cd: 4, hp: 55, aggro: 110, minPage: 2,
+      line: "Decoy: monsters rush to chew it. Cheap and quick to recharge.",
+      teach: "A Decoy looks tasty. Ground monsters nearby leave the trail to chew it, which buys you time. Put it in your kill box.",
+      power: "Flyers ignore it."
+    },
+    sharpener: {
+      name: "Sharpener", role: "Shoots", cost: 40, step: 8, max: 3, cd: 10, hp: 36, aggro: 54, range: 120, minPage: 3,
+      line: "Sharpener: shoots shavings at ground monsters. A red line speeds it up.",
+      teach: "The Sharpener shoots pencil shavings at ground monsters in range. It is weak against armor and can't hit flyers. Place it a little way from the trail so it isn't chewed.",
+      power: "Touching a red line sharpens it: it fires 60% faster."
+    },
+    glue: {
+      name: "Glue pad", role: "Slows", cost: 18, step: 0, max: 3, cd: 5, hp: 30, aggro: 0, minPage: 5, life: 16,
+      line: "Glue pad: monsters crawl through it. It dries up after a while.",
+      teach: "Glue pads slow ground monsters to a crawl while they cross them. They dry up after about 16 seconds. Flyers soar right over.",
+      power: "Put one before a wall or splash so monsters linger there."
+    },
+    bumper: {
+      name: "Bumper", role: "Bounces", cost: 26, step: 0, max: 2, cd: 8, hp: 60, aggro: 30, minPage: 8, charges: 8,
+      line: "Bumper: bounces monsters back and stuns them. Pops after 8 bumps.",
+      teach: "An eraser Bumper bounces ground monsters backward and stuns them for a moment. It pops after 8 bumps. Great right before a kill box.",
+      power: "Flyers and hoppers mid-jump pass over it."
+    },
+    reservoir: {
+      name: "Reservoir", role: "+Ink max", cost: 55, step: 0, max: 1, cd: 25, hp: 50, aggro: 60, minPage: 13, bonus: 50,
+      line: "Reservoir: holds 50 more ink (adds 25 now). One per page.",
+      teach: "A Reservoir raises your ink limit by 50 and adds 25 ink right away. If monsters chew it, the extra room goes away.",
+      power: "Only one per page."
+    }
+  };
+  var COMP_COMMON = "Any component touching a green line is fenced: it takes 40% less chewing. Monsters chew components they walk near, just like walls.";
+
   var COLOR_LEGEND = {
     blue:   { short: "Slow",   line: "Blue: slow — a cheap line that slows monsters" },
     red:    { short: "Tickle", line: "Red: tickle — doodles hatch and poke monsters" },
@@ -426,7 +478,7 @@
     return {
       id: o.id, name: o.name, blurb: o.blurb || "", diff: o.diff, goal: o.goal,
       boss: o.boss || null, adapt: !!o.adapt, endless: !!o.endless,
-      t: 0, ink: o.ink, inkMax: o.inkMax, inkSlow: 0, refill: o.refill,
+      t: 0, ink: o.ink, inkMax: o.inkMax, inkSlow: 0, refill: o.refill, hpMul: o.hpMul || 1,
       tool: "blue", drawing: null, strokes: [], critters: [], monsters: [], parts: [], floats: [],
       combos: [], pads: [],
       house: o.house, puddles: o.puddles || [], stains: o.stains || [], blots: o.blots || [],
@@ -438,6 +490,7 @@
       score: 0, leaks: 0, houseHurt: false, usedCombo: false, zapT: 0,
       ended: null, endReason: "", endTimer: 0, rating: 0, rules: null,
       paused: false, firstDraw: false, maxStill: 0,
+      comps: [], drops: [], beams: [], cooldowns: {}, loadout: [], placing: null, inkBonus: 0, boostT: 0, placed: 0, collected: 0,
     };
   }
 
@@ -450,7 +503,7 @@
     seedRng(lv.id * 7919 + DIFF_ORDER.indexOf(diff) * 131 + 17);
     seq = 1;
     timeScale = opts.timeScale != null ? opts.timeScale : 1;
-    var inkMax = opts.inkMax != null ? opts.inkMax : Math.round((lv.ink || 150) * d.ink);
+    var inkMax = opts.inkMax != null ? opts.inkMax : Math.round((lv.ink || 150) * d.ink * (opts.inkScale != null ? opts.inkScale : inkScaleFor(lv.id)));
     var ink = opts.ink != null ? opts.ink : inkMax;
     if (ink > inkMax) inkMax = ink;
     var lives = opts.houseHp != null ? opts.houseHp : d.lives;
@@ -459,7 +512,7 @@
     var waves = opts.noMonsters ? [] : (opts.waves || lv.waves || []);
     play = emptyPlay({
       id: lv.id, name: lv.name, blurb: lv.blurb, diff: diff, goal: lv.goal,
-      boss: lv.boss, adapt: lv.adapt, ink: ink, inkMax: inkMax, refill: d.refill,
+      boss: lv.boss, adapt: lv.adapt, ink: ink, inkMax: inkMax, refill: d.refill, hpMul: opts.hpMul != null ? opts.hpMul : hpMulFor(lv.id),
       house: { x: sx(lv.house.x), y: sy(lv.house.y), hp: lives, max: lives },
       puddles: (lv.puddles || []).map(function (p) {
         return { x: sx(p.x), y: sy(p.y), r: p.r * scale, vx: p.vx ? sx(p.vx) - sx(0) : 0, vy: p.vy ? sy(p.vy) - sy(0) : 0 };
@@ -475,7 +528,9 @@
       waves: waves.map(function (w) { return w.map(function (it) { return { kind: it.kind, boss: it.boss || null, lane: it.lane, dt: it.dt }; }); }),
       autoStart: !!opts.autoStart,
     });
+    play.loadout = resolveLoadout(lv.id, opts.loadout);
     hint = lv.hint || "";
+    hintSeen = {};
     hintUntil = 8;
     callout = null;
     calloutQueue = [];
@@ -485,6 +540,7 @@
     closeModal("modal-pause");
     closeModal("modal-end");
     syncTools();
+    syncPackets();
     enterPlanIfNeeded();
     teachColor(play.tool);
     updateHud();
@@ -507,17 +563,19 @@
     play = emptyPlay({
       id: 0, name: "Endless Sketch", blurb: "How long can you keep the page clean?",
       diff: diff, goal: "house", endless: true, adapt: true,
-      ink: ink, inkMax: inkMax, refill: d.refill === 0 ? 0.5 : d.refill * 3.4,
+      ink: ink, inkMax: inkMax, refill: d.refill === 0 ? 0.18 : d.refill * 3,
       house: { x: sx(195), y: sy(460), hp: lives, max: lives },
       puddles: [{ x: sx(80), y: sy(200), r: 40 * scale, vx: sx(16) - sx(0), vy: sy(8) - sy(0) }],
     });
     play.nextWaveAt = 3;
+    play.loadout = resolveLoadout(0, opts.loadout);
     hint = save.crayons.yellow || save.crayons.purple ? "Use every crayon you've unlocked. Waves keep coming!" : "Draw a loop around the house, then mix your colors!";
     hintUntil = 8;
     showScreen("play");
     closeModal("modal-pause");
     closeModal("modal-end");
     syncTools();
+    syncPackets();
     updateHud();
     if (window.DDAudio) window.DDAudio.unlock();
   }
@@ -583,7 +641,7 @@
 
   function showScreen(name) {
     screen = name;
-    ["menu", "levels", "how", "settings", "play"].forEach(function (s) {
+    ["menu", "levels", "loadout", "how", "settings", "play"].forEach(function (s) {
       var el = document.getElementById("screen-" + s);
       if (el) el.classList.toggle("on", s === name);
     });
@@ -642,7 +700,7 @@
         b.addEventListener("click", function () {
           if (!unlocked) return;
           sfx("tap");
-          beginLevel(id);
+          openLoadout(id);
         });
         row.appendChild(b);
       });
@@ -654,14 +712,14 @@
     endBtn.id = "btn-endless-levels";
     endBtn.setAttribute("data-testid", "btn-endless-levels");
     endBtn.textContent = "Endless Sketch" + (save.endlessBest ? "  •  best " + save.endlessBest : "");
-    endBtn.addEventListener("click", function () { sfx("tap"); beginEndless(); });
+    endBtn.addEventListener("click", function () { sfx("tap"); openLoadout(0); });
     wrap.appendChild(endBtn);
   }
   function syncTools() {
     Array.prototype.forEach.call(document.querySelectorAll("#tools .tool"), function (b) {
       var tool = b.getAttribute("data-tool");
       var unlocked = crayonUnlocked(tool);
-      b.classList.toggle("sel", !!(play && tool === play.tool));
+      b.classList.toggle("sel", !!(play && !play.placing && tool === play.tool));
       b.classList.toggle("lock", !unlocked);
       if (tool === "yellow" || tool === "purple") b.disabled = !unlocked;
     });
@@ -720,6 +778,11 @@
   function updateLegend(tool) {
     var el = document.getElementById("crayon-legend");
     if (!el) return;
+    if (play && play.placing && COMPS[play.placing]) {
+      var cd = COMPS[play.placing];
+      el.textContent = cd.line + "  Tap the page to place (" + compCost(play.placing) + " ink).";
+      return;
+    }
     var id = tool || (play && play.tool) || "blue";
     var row = COLOR_LEGEND[id];
     el.textContent = row ? row.line : "";
@@ -766,6 +829,7 @@
     else if (play.goal === "stars") wl.textContent = "Collect " + play.starsNeed + " stars";
     else wl.textContent = "Protect the house";
     updatePlanPanel();
+    updatePackets();
     updateLegend(play.tool);
     tickCallout();
     var hintEl = document.getElementById("hint");
@@ -824,6 +888,13 @@
     if (window.DDAudio) window.DDAudio.unlock();
     ev.preventDefault();
     var p = evPos(ev);
+    var dr = dropAt(p.x, p.y);
+    if (dr) { collectDrop(dr); return; }
+    if (play.placing) {
+      var kind = play.placing;
+      if (placeComp(kind, p.x, p.y)) { play.placing = null; syncTools(); updatePackets(); }
+      return;
+    }
     if (play.tool === "eraser") {
       eraseAt(p.x, p.y);
       play.erasing = ev.pointerId;
@@ -1092,6 +1163,392 @@
     if (i >= 0) removeStrokeAt(i, st.pts[0].x, st.pts[0].y, false);
   }
 
+
+  /* ---------- components: logic ---------- */
+  var lastPlaceFail = "";
+  function eligibleComps(id) {
+    return COMP_ORDER.filter(function (k) { return id === 0 || COMPS[k].minPage <= id; });
+  }
+  function slotsFor(id) { return id === 0 ? 4 : (id <= 6 ? 3 : 4); }
+  function resolveLoadout(id, want) {
+    var elig = eligibleComps(id), n = slotsFor(id), out = [];
+    var src = want || save.loadout || [];
+    src.forEach(function (k) {
+      if (elig.indexOf(k) >= 0 && out.indexOf(k) < 0 && out.length < n) out.push(k);
+    });
+    if (!want) {
+      elig.forEach(function (k) { if (out.length < n && out.indexOf(k) < 0) out.push(k); });
+    }
+    out.sort(function (a, b) { return COMP_ORDER.indexOf(a) - COMP_ORDER.indexOf(b); });
+    return out;
+  }
+  function compCount(kind) {
+    var n = 0;
+    play.comps.forEach(function (c) { if (c.kind === kind && !c.dead) n++; });
+    return n;
+  }
+  function compCost(kind) {
+    var d = COMPS[kind];
+    return d.cost + (d.step || 0) * (play ? compCount(kind) : 0);
+  }
+  function placeComp(kind, x, y) {
+    var P = play, def = COMPS[kind];
+    lastPlaceFail = "";
+    function fail(msg) { lastPlaceFail = msg; showHint(msg, 2.4); sfx("dry"); return null; }
+    if (!P || P.ended || !def) return null;
+    if (P.loadout.indexOf(kind) < 0) return fail("That packet isn't in your loadout.");
+    if ((P.cooldowns[kind] || 0) > 0) return fail(def.name + " is recharging.");
+    if (compCount(kind) >= def.max) return fail("Only " + def.max + " " + def.name + (def.max > 1 ? "s" : "") + " at a time.");
+    var cost = compCost(kind);
+    if (P.ink < cost) return fail("Not enough ink for a " + def.name + " (" + cost + ").");
+    var fs = fieldSize();
+    if (x < 16 || y < 16 || x > fs.w - 16 || y > fs.h - 16) return fail("Place it a bit further inside the page.");
+    if (foldedAt(x, y)) return fail("The page is folded there!");
+    if (inBlot(x, y)) return fail("Ink blot! You can't place there.");
+    if (dist({ x: x, y: y }, P.house) < 46) return fail("Too close to the house.");
+    for (var i = 0; i < P.comps.length; i++) {
+      if (!P.comps[i].dead && dist(P.comps[i], { x: x, y: y }) < 34) return fail("Too close to another component.");
+    }
+    P.ink -= cost;
+    var c = {
+      id: seq++, kind: kind, x: x, y: y, hp: def.hp, max: def.hp, hurt: 0, born: 0,
+      fill: (def.start || 0), cd: 0.6, aim: -1.57, life: def.life || 0, charges: def.charges || 0, squash: 0,
+      boost: { water: false, sharp: false, fence: false }, dead: false,
+    };
+    P.comps.push(c);
+    P.placed += 1;
+    computeBoost(c);
+    if (kind === "reservoir") {
+      P.inkMax += def.bonus;
+      P.inkBonus += def.bonus;
+      P.ink = Math.min(P.inkMax, P.ink + 25);
+    }
+    if (P.phase !== "plan") P.cooldowns[kind] = def.cd;
+    sfx("place");
+    floatText(x, y - 22, "-" + cost, "#2c4788");
+    puff(x, y, "#e8d8b0", 6);
+    if (kind === "inkwell") showHint("Inkwell planted! It fills while the wave runs. Tap its ink drops.", 3);
+    else showHint(def.name + " placed.", 1.6);
+    updateHud();
+    return c;
+  }
+  function computeBoost(c) {
+    c.boost = { water: false, sharp: false, fence: false };
+    play.strokes.forEach(function (st) {
+      if (strokeFolded(st) || !nearStroke(st, c.x, c.y, 26)) return;
+      if (st.color === "blue" && c.kind === "inkwell") c.boost.water = true;
+      if (st.color === "red" && c.kind === "sharpener") c.boost.sharp = true;
+      if (st.color === "green") c.boost.fence = true;
+    });
+  }
+  function removeComp(c, why) {
+    if (c.dead) return;
+    c.dead = true;
+    c.hp = 0;
+    if (c.kind === "reservoir") {
+      play.inkMax -= COMPS.reservoir.bonus;
+      play.inkBonus -= COMPS.reservoir.bonus;
+      play.ink = Math.min(play.ink, play.inkMax);
+    }
+    var msg = why === "chewed" ? "Chewed up!" : why === "dry" ? "Dried up" : why === "pop" ? "Pop!" : "Gone";
+    floatText(c.x, c.y - 20, msg, why === "chewed" ? "#9a2e24" : "#6a5544");
+    puff(c.x, c.y, "#d8c8a8", 8);
+    sfx(why === "chewed" ? "erase" : "pop");
+    if (why === "chewed") hintOnce("lostcomp", "A monster chewed a component. Place them away from the trails!");
+  }
+  var hintSeen = {};
+  function hintOnce(key, msg) {
+    if (hintSeen[key]) return;
+    hintSeen[key] = true;
+    showHint(msg, 3);
+  }
+  function damageComp(c, amt) {
+    if (!c || c.dead) return;
+    c.hp -= amt * (c.boost && c.boost.fence ? 0.6 : 1);
+    c.hurt = 0.15;
+    if (c.hp <= 0) removeComp(c, "chewed");
+  }
+  function nearestComp(m) {
+    var best = null, bs = 1e9;
+    for (var i = 0; i < play.comps.length; i++) {
+      var c = play.comps[i];
+      if (c.dead) continue;
+      var a = COMPS[c.kind].aggro;
+      if (!a) continue;
+      var d = dist(m, c);
+      if (d > a) continue;
+      var s = d / a - (c.kind === "decoy" ? 0.3 : 0);
+      if (s < bs) { bs = s; best = c; }
+    }
+    return best;
+  }
+  function glueAt(m) {
+    for (var i = 0; i < play.comps.length; i++) {
+      var c = play.comps[i];
+      if (c.kind === "glue" && !c.dead && dist(m, c) < 32) return true;
+    }
+    return false;
+  }
+  function spawnDrop(c) {
+    var def = COMPS[c.kind];
+    var a = rng() * Math.PI * 2;
+    var fs = fieldSize();
+    play.drops.push({
+      id: seq++, src: c.id, v: def.drop,
+      x: clamp(c.x + Math.cos(a) * 20, 12, fs.w - 12), y: clamp(c.y - 10 + Math.sin(a) * 10, 12, fs.h - 12),
+      life: 10, max: 10, bob: rng() * 6,
+    });
+    sfx("drip");
+    teach("drop", "Ink drop! Tap it to collect the ink before it fades away.");
+    hintOnce("drop", "Ink drop! Tap it to collect.");
+  }
+  function dropAt(x, y) {
+    if (!play) return null;
+    var best = null, bd = 32;
+    play.drops.forEach(function (d) {
+      var dd = dist(d, { x: x, y: y });
+      if (dd < bd) { bd = dd; best = d; }
+    });
+    return best;
+  }
+  function collectDrop(d) {
+    var i = play.drops.indexOf(d);
+    if (i < 0) return 0;
+    play.drops.splice(i, 1);
+    var before = play.ink;
+    play.ink = Math.min(play.inkMax, play.ink + d.v);
+    play.collected += d.v;
+    floatText(d.x, d.y - 8, "+" + d.v + " ink", "#2c4788");
+    puff(d.x, d.y, "#6a8fe0", 5);
+    sfx("collect");
+    if (play.ink - before < d.v - 0.01) hintOnce("full", "Your ink is full! Spend some so the next drop isn't wasted.");
+    updateHud();
+    return d.v;
+  }
+  function collectAllDrops() {
+    var n = 0;
+    play.drops.slice().forEach(function (d) { n += collectDrop(d); });
+    return n;
+  }
+  function fireSharpener(c) {
+    var def = COMPS.sharpener, best = null, bd = def.range;
+    play.monsters.forEach(function (m) {
+      if (m.hp <= 0 || m.kind === "flyer" || !monsterVisible(m)) return;
+      var d = dist(m, c);
+      if (d < bd) { bd = d; best = m; }
+    });
+    if (!best) { c.cd = 0.25; return; }
+    c.aim = Math.atan2(best.y - c.y, best.x - c.x);
+    c.cd = 1.1 / (c.boost.sharp ? 1.6 : 1);
+    play.beams.push({ x1: c.x, y1: c.y - 4, x2: best.x, y2: best.y, life: 0.2 });
+    sfx("shave");
+    hurtMonster(best, 6, "shave");
+  }
+  function bumpTick(c) {
+    var fs = fieldSize();
+    play.monsters.forEach(function (m) {
+      if (c.dead || m.hp <= 0 || m.kind === "flyer" || m.hopping > 0 || (m.bumpCd || 0) > 0) return;
+      if (dist(m, c) > 24) return;
+      var dx = m.x - c.x, dy = m.y - c.y, l = Math.hypot(dx, dy);
+      var nx = l < 1 ? 0 : dx / l, ny = l < 1 ? -1 : dy / l;
+      m.x = clamp(c.x + nx * 58, 8, fs.w - 8);
+      m.y = clamp(c.y + ny * 58, 8, fs.h - 8);
+      m.stun = 0.45;
+      m.bumpCd = 1.2;
+      m.detour = null;
+      m.breaking = false;
+      m.breakSt = null;
+      c.squash = 0.25;
+      c.charges -= 1;
+      floatText(c.x, c.y - 22, "Boing!", "#c0507a");
+      sfx("bump");
+      puff(c.x, c.y, "#f0a0b8", 5);
+      hurtMonster(m, 3, "bump");
+      if (c.charges <= 0) removeComp(c, "pop");
+    });
+  }
+  function tickComps(dt) {
+    var P = play;
+    Object.keys(P.cooldowns).forEach(function (k) {
+      if (P.cooldowns[k] > 0) P.cooldowns[k] = Math.max(0, P.cooldowns[k] - dt);
+    });
+    P.boostT -= dt;
+    var recompute = P.boostT <= 0;
+    if (recompute) P.boostT = 0.4;
+    P.comps.forEach(function (c) {
+      if (c.dead) return;
+      c.born += dt;
+      if (c.hurt > 0) c.hurt -= dt;
+      if (c.squash > 0) c.squash -= dt;
+      if (recompute) computeBoost(c);
+      if (c.kind === "inkwell") {
+        var mine = 0;
+        P.drops.forEach(function (d) { if (d.src === c.id) mine++; });
+        if (mine < 2) c.fill += dt * (c.boost.water ? 1.5 : 1);
+        if (c.fill >= COMPS.inkwell.period) { c.fill = 0; spawnDrop(c); }
+      } else if (c.kind === "sharpener") {
+        c.cd -= dt;
+        if (c.cd <= 0) fireSharpener(c);
+      } else if (c.kind === "glue") {
+        c.life -= dt;
+        if (c.life <= 0) removeComp(c, "dry");
+      } else if (c.kind === "bumper") {
+        bumpTick(c);
+      }
+    });
+    P.drops.forEach(function (d) { d.life -= dt; });
+    var fading = P.drops.filter(function (d) { return d.life <= 0; });
+    if (fading.length) {
+      fading.forEach(function (d) { floatText(d.x, d.y - 6, "faded", "#8a7a6a"); });
+      P.drops = P.drops.filter(function (d) { return d.life > 0; });
+      hintOnce("faded", "An ink drop faded. Tap drops quickly to keep the ink!");
+    }
+    P.beams.forEach(function (b) { b.life -= dt; });
+    P.beams = P.beams.filter(function (b) { return b.life > 0; });
+    P.comps = P.comps.filter(function (c) { return !c.dead; });
+  }
+
+  /* ---------- components: packets and loadout UI ---------- */
+  function iconCanvas(kind, size) {
+    var cv = document.createElement("canvas");
+    var dpr = 2;
+    cv.width = size * dpr;
+    cv.height = size * dpr;
+    cv.style.width = size + "px";
+    cv.style.height = size + "px";
+    var ictx = cv.getContext("2d");
+    ictx.scale(dpr, dpr);
+    drawCompAt(ictx, kind, size / 2, size / 2 + 3, size / 44, null, 0.5);
+    return cv;
+  }
+  function syncPackets() {
+    var wrap = document.getElementById("packets");
+    if (!wrap) return;
+    wrap.innerHTML = "";
+    var list = play ? play.loadout : [];
+    wrap.hidden = list.length === 0;
+    wrap.style.gridTemplateColumns = "repeat(" + Math.max(1, list.length) + ", 1fr)";
+    list.forEach(function (k) {
+      var def = COMPS[k];
+      var b = document.createElement("button");
+      b.className = "packet";
+      b.setAttribute("data-comp", k);
+      b.setAttribute("data-testid", "packet-" + k);
+      var ic = document.createElement("span");
+      ic.className = "pic";
+      ic.appendChild(iconCanvas(k, 34));
+      var tx = document.createElement("span");
+      tx.className = "ptx";
+      tx.innerHTML = '<span class="pn">' + def.name + '</span><span class="pf">' + def.role + '</span><span class="pc"></span>';
+      var cdEl = document.createElement("span");
+      cdEl.className = "pcd";
+      b.appendChild(ic);
+      b.appendChild(tx);
+      b.appendChild(cdEl);
+      b.addEventListener("click", function () { selectPacket(k); });
+      wrap.appendChild(b);
+    });
+    updatePackets();
+  }
+  function selectPacket(k) {
+    if (!play || play.ended || !COMPS[k]) return;
+    sfx("select");
+    if (play.placing === k) play.placing = null;
+    else play.placing = k;
+    if (play.placing) teach("comp:" + k, COMPS[k].teach);
+    syncTools();
+    updatePackets();
+    updateLegend();
+  }
+  function updatePackets() {
+    var wrap = document.getElementById("packets");
+    if (!wrap || !play) return;
+    Array.prototype.forEach.call(wrap.querySelectorAll(".packet"), function (b) {
+      var k = b.getAttribute("data-comp");
+      var def = COMPS[k];
+      var cd = play.cooldowns[k] || 0;
+      var cost = compCost(k);
+      var full = compCount(k) >= def.max;
+      b.classList.toggle("sel", play.placing === k);
+      b.classList.toggle("poor", play.ink < cost || full);
+      b.classList.toggle("wait", cd > 0);
+      var cEl = b.querySelector(".pc");
+      if (cEl) cEl.textContent = full ? "max " + def.max : (cd > 0 ? Math.ceil(cd) + "s" : cost + " ink");
+      var cdEl = b.querySelector(".pcd");
+      if (cdEl) cdEl.style.transform = "scaleY(" + (cd > 0 ? Math.min(1, cd / def.cd) : 0) + ")";
+    });
+  }
+  var loadoutFor = 1;
+  var loadoutPick = [];
+  function openLoadout(id) {
+    loadoutFor = id;
+    var elig = eligibleComps(id);
+    loadoutPick = resolveLoadout(id, null);
+    showScreen("loadout");
+    renderLoadout();
+  }
+  function renderLoadout() {
+    var id = loadoutFor, elig = eligibleComps(id), n = slotsFor(id);
+    var title = document.getElementById("loadout-title");
+    var sub = document.getElementById("loadout-sub");
+    var grid = document.getElementById("loadout-grid");
+    if (title) title.textContent = id === 0 ? "Endless packets" : (id % 6 === 0 ? "Boss page packets" : "Page " + id + " packets");
+    if (sub) sub.textContent = "Pick up to " + n + " seed packets (" + loadoutPick.length + " / " + n + "). After you place one, it recharges before you can place it again during a wave.";
+    if (!grid) return;
+    grid.innerHTML = "";
+    COMP_ORDER.forEach(function (k) {
+      var def = COMPS[k];
+      var unlocked = elig.indexOf(k) >= 0;
+      var on = loadoutPick.indexOf(k) >= 0;
+      var b = document.createElement("button");
+      b.className = "lcard" + (on ? " on" : "") + (unlocked ? "" : " lock");
+      b.setAttribute("data-testid", "lcard-" + k);
+      b.setAttribute("data-comp", k);
+      var ic = document.createElement("span");
+      ic.className = "lic";
+      if (unlocked) ic.appendChild(iconCanvas(k, 40));
+      else ic.textContent = "🔒";
+      var tx = document.createElement("span");
+      tx.className = "ltx";
+      if (unlocked) {
+        tx.innerHTML = '<b>' + def.name + '</b> <i>' + def.cost + ' ink · recharge ' + def.cd + 's</i><span>' + def.line.replace(/^[^:]+: /, "") + '</span>';
+      } else {
+        tx.innerHTML = '<b>' + def.name + '</b> <i>unlocks on page ' + def.minPage + '</i>';
+      }
+      b.appendChild(ic);
+      b.appendChild(tx);
+      b.addEventListener("click", function () {
+        if (!unlocked) return;
+        var i = loadoutPick.indexOf(k);
+        if (i >= 0) loadoutPick.splice(i, 1);
+        else if (loadoutPick.length < n) loadoutPick.push(k);
+        else { sfx("dry"); return; }
+        sfx("select");
+        renderLoadout();
+      });
+      grid.appendChild(b);
+    });
+  }
+  function startFromLoadout() {
+    var pick = loadoutPick.slice();
+    save.loadout = pick;
+    persist();
+    if (loadoutFor === 0) beginEndless({ loadout: pick });
+    else beginLevel(loadoutFor, { loadout: pick });
+  }
+  function renderCodexComps() {
+    var ul = document.getElementById("codex-comps-list");
+    if (!ul) return;
+    ul.innerHTML = "";
+    COMP_ORDER.forEach(function (k) {
+      var d = COMPS[k];
+      var li = document.createElement("li");
+      li.setAttribute("data-testid", "codex-comp-" + k);
+      li.innerHTML = "<b>" + d.name + "</b> (" + d.cost + " ink, recharge " + d.cd + "s, unlocks page " + d.minPage + "): " + d.line.replace(/^[^:]+: /, "") + " " + d.power;
+      ul.appendChild(li);
+    });
+  }
+
   /* ---------- simulation ---------- */
   function updatePlay(dt) {
     if (!play || play.paused) return;
@@ -1115,6 +1572,7 @@
     tickCombos(dt);
     tickZap(dt);
     tickPads(dt);
+    tickComps(dt);
     tickMonsters(dt);
     tickFx(dt);
     checkWaveClear();
@@ -1210,7 +1668,7 @@
     var boss = opts.boss || null;
     var d = D();
     var base = kind === "boss" ? (BOSS_STATS[boss || "smudge"] || BOSS_STATS.smudge) : (KIND_STATS[kind] || KIND_STATS.scribble);
-    var hp = opts.hp != null ? opts.hp : Math.round(base.hp * d.hp * (1 + d.esc * Math.max(0, (play.endless ? 0 : play.waveIdx - 1))));
+    var hp = opts.hp != null ? opts.hp : Math.round(base.hp * d.hp * (play.hpMul || 1) * (1 + d.esc * Math.max(0, (play.endless ? 0 : play.waveIdx - 1))));
     var spd = opts.spd != null ? opts.spd : base.spd * d.spd;
     var squiggle = [];
     var seed = seq * 17;
@@ -1570,6 +2028,7 @@
       if (m.hp <= 0) { m.hurt -= dt; return; }
       if (m.hurt > 0) m.hurt -= dt;
       m.nibbleCd = Math.max(0, m.nibbleCd - dt);
+      if (m.bumpCd > 0) m.bumpCd -= dt;
       tickBoss(m, dt);
       var visible = monsterVisible(m);
       // tickle from nearby critters (ground monsters only)
@@ -1593,9 +2052,17 @@
           if (h.hp > 0 && dist(h, m) < 72 && m.hp < m.max) m.hp = Math.min(m.max, m.hp + 6 * dt);
         });
       }
+      // bumped: stunned for a moment (counts as busy, never "stuck")
+      if (m.stun > 0) {
+        m.stun -= dt;
+        noteMotion(m, dt, true);
+        if (dist(m, house) < 28) leak(m);
+        return;
+      }
       // target selection
       var target = house;
       var seekingLine = false;
+      m.compT = null;
       if (m.kind === "flyer") {
         target = house;
       } else {
@@ -1607,6 +2074,10 @@
           var line = nearestChewStroke(m);
           if (line) { target = line.pt; m.chewTarget = line.st; seekingLine = true; }
         }
+        if (!seekingLine && m.hopping <= 0) {
+          var ct = nearestComp(m);
+          if (ct) { target = ct; m.compT = ct; }
+        }
       }
       var ddx = target.x - m.x, ddy = target.y - m.y;
       var ang = Math.atan2(ddy, ddx);
@@ -1614,6 +2085,7 @@
       var spd = m.spd;
       if (m.kind !== "flyer") {
         if (touchingColor(m, "blue", 16)) spd *= 0.45;
+        if (glueAt(m)) spd *= 0.35;
         if (inPuddle(m.x, m.y, play.puddles)) spd *= 0.7;
       }
       if (m.canHop && m.hopping <= 0) {
@@ -1625,6 +2097,8 @@
         }
       }
       if (m.hopping > 0) { m.hopping -= dt; spd *= 1.55; }
+      var compChew = !!(m.compT && !m.compT.dead && dist(m, m.compT) < 20);
+      if (compChew) spd = 0;
       // Walk around a wall if a gap exists; otherwise chew through it.
       if (m.breaking) m.detour = null;
       if (m.kind !== "flyer" && m.hopping <= 0 && m.detour) {
@@ -1690,7 +2164,20 @@
         m.y = ny;
         if (m.breaking) { m.breaking = false; m.breakSt = null; }
       }
-      var busy = !!(m.breaking || m.hopping > 0 || (seekingLine && m.chewTarget));
+      m.compChewing = compChew;
+      if (compChew) {
+        var cc = m.compT;
+        m.breakAng = Math.atan2(cc.y - m.y, cc.x - m.x);
+        damageComp(cc, breakRate(m) * dt);
+        m.compPulse = (m.compPulse || 0) + dt;
+        if (m.compPulse >= 0.8) {
+          m.compPulse = 0;
+          floatText(cc.x, cc.y - 24, "Chomp!", "#9a2e24");
+          sfx("chew");
+          puff(cc.x, cc.y, "#e0a060", 3);
+        }
+      }
+      var busy = !!(m.breaking || m.hopping > 0 || compChew || (seekingLine && m.chewTarget));
       if ((m.stillT || 0) > 1.2 && !busy && m.kind !== "flyer") {
         var w2 = vineAhead(m, target.x - m.x, target.y - m.y) || vineHit(m.x, m.y, 26);
         if (w2) {
@@ -1851,6 +2338,7 @@
     if (reason === "tickle" && (m.kind === "armored" || m.armor)) dmg *= 0.15;
     if (reason === "splash" && (m.kind === "armored" || m.armor)) dmg *= 0.35;
     if (reason === "splash" && m.kind === "flyer") dmg *= 0.5;
+    if (reason === "shave" && (m.kind === "armored" || m.armor)) dmg *= 0.3;
     m.hp -= dmg;
     m.hurt = 0.15;
     if (m.kind === "splitter" && !m.hasSplit && m.hp <= m.max * 0.5 && m.hp > 0) {
@@ -1921,6 +2409,7 @@
       play.ink = Math.min(play.inkMax, play.ink + bonus);
       play.phase = "plan";
       play.pending = [];
+      play.cooldowns = {};
       sfx("wave");
       floatText(sx(195), sy(60), "Wave cleared! +" + bonus + " ink", "#226c36");
       planKey = "";
@@ -2155,6 +2644,7 @@
     play.stains.forEach(function (s) { drawStain(ctx, s, t); });
     play.blots.forEach(function (b) { drawBlot(ctx, b, t); });
     drawLanes(ctx, t);
+    drawDangerBand(ctx);
     play.puddles.forEach(function (p) { drawPuddle(ctx, p, t); });
     if (play.wind) drawWind(ctx, w, h, t, play.wind);
     play.stars.forEach(function (s) { if (!s.taken) drawStar(ctx, s.x, s.y, t, false); });
@@ -2169,6 +2659,7 @@
     });
     play.combos.forEach(function (c) { drawCombo(ctx, c, t); });
     play.pads.forEach(function (p) { drawPad(ctx, p, t); });
+    drawComps(ctx, t);
     if (play.drawing && play.drawing.pts.length) {
       crayonStroke(ctx, play.drawing.pts, play.drawing.color, 9, 99);
     }
@@ -2201,6 +2692,8 @@
       if (m.hp > 0 && vis) miniBar(ctx, m.x, m.y + 18 * (m.scale || 1) + (m.kind === "flyer" ? 4 : 0), m.hp / m.max);
       ctx.globalAlpha = 1;
     });
+    drawBeams(ctx, t);
+    drawDrops(ctx, t);
     if (play.phase === "plan" && !play.ended) drawPreview(ctx, t, w, h);
     if (play.fold) drawFold(ctx, w, h, play.fold, t);
     play.parts.forEach(function (p) {
@@ -2219,6 +2712,192 @@
       ctx.fillText(f.text, f.x, f.y);
       ctx.globalAlpha = 1;
     });
+  }
+
+
+  /* ---------- components: art (original doodles) ---------- */
+  function drawCompAt(ctx, kind, x, y, s, c, t) {
+    var ink = "#3a2a22";
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(s, s);
+    ctx.lineWidth = 2.6;
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    ctx.strokeStyle = ink;
+    if (c && c.hurt > 0) ctx.globalAlpha = 0.65 + Math.sin(t * 40) * 0.25;
+    var bob = c ? Math.sin(t * 3 + c.id) * 1.2 : 0;
+    ctx.fillStyle = "rgba(0,0,0,0.13)";
+    ctx.beginPath(); ctx.ellipse(0, 18, kind === "reservoir" ? 18 : 15, 5, 0, 0, Math.PI * 2); ctx.fill();
+    function eyes(ex, ey, gap) {
+      ctx.fillStyle = "#fff";
+      ctx.beginPath(); ctx.arc(ex - gap, ey, 3, 0, Math.PI * 2); ctx.arc(ex + gap, ey, 3, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = ink;
+      ctx.beginPath(); ctx.arc(ex - gap + 0.6, ey + 0.4, 1.3, 0, Math.PI * 2); ctx.arc(ex + gap + 0.6, ey + 0.4, 1.3, 0, Math.PI * 2); ctx.fill();
+    }
+    if (kind === "inkwell") {
+      var f = c ? Math.min(1, c.fill / COMPS.inkwell.period) : 0.55;
+      ctx.translate(0, bob * 0.4);
+      ctx.fillStyle = "#f6f1e0";
+      roundish(ctx, -14, -9, 28, 27, 9); ctx.fill();
+      ctx.save();
+      roundish(ctx, -14, -9, 28, 27, 9); ctx.clip();
+      var lvl = 7 + 19 * f;
+      ctx.fillStyle = "#2f4fa0"; ctx.fillRect(-15, 18 - lvl, 30, lvl);
+      ctx.fillStyle = "#5a7cd4"; ctx.fillRect(-15, 18 - lvl, 30, 3);
+      ctx.restore();
+      roundish(ctx, -14, -9, 28, 27, 9); ctx.stroke();
+      ctx.fillStyle = "#f6f1e0"; roundish(ctx, -7, -16, 14, 8, 3); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "#c98b4a"; roundish(ctx, -6, -22, 12, 7, 3); ctx.fill(); ctx.stroke();
+      eyes(0, 3, 5.5);
+      ctx.beginPath(); ctx.arc(0, 9, 3, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
+      if (c && f > 0.8) {
+        ctx.fillStyle = "#ffe57a";
+        starPath(ctx, 14, -14 + Math.sin(t * 8) * 1.5, 2.2, 5, 4); ctx.fill();
+      }
+    } else if (kind === "sharpener") {
+      var aim = c ? c.aim : -0.6;
+      ctx.fillStyle = "#f0c640";
+      roundish(ctx, -15, -10, 30, 24, 7); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "#e0ac28"; ctx.fillRect(-12, 6, 24, 4);
+      ctx.save();
+      ctx.translate(0, -2); ctx.rotate(aim);
+      ctx.fillStyle = "#c4ccd4"; roundish(ctx, 3, -5, 18, 10, 3); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "#3a2a22"; ctx.beginPath(); ctx.arc(20, 0, 2.2, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+      ctx.fillStyle = "#9aa2aa"; ctx.beginPath(); ctx.arc(-8, 3, 3, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      eyes(-1, 8, 4.5);
+      if (c && c.boost.sharp) {
+        ctx.strokeStyle = "#e05645"; ctx.lineWidth = 2; ctx.setLineDash([3, 3]);
+        ctx.beginPath(); ctx.arc(0, 2, 22, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+      }
+    } else if (kind === "glue") {
+      var al = c ? Math.min(1, c.life / 3) : 1;
+      ctx.globalAlpha *= 0.35 + 0.65 * al;
+      ctx.fillStyle = "rgba(255,246,214,0.95)";
+      ctx.strokeStyle = "#d3b878";
+      ctx.beginPath();
+      for (var i = 0; i <= 12; i++) {
+        var a = i / 12 * Math.PI * 2, r = 26 + Math.sin(i * 2.1 + (c ? c.id : 1)) * 4;
+        var px = Math.cos(a) * r, py = Math.sin(a) * r * 0.7 + 4;
+        if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+      }
+      ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = "rgba(255,255,255,0.9)"; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(-9, -2, 8, 3.4, 4.5); ctx.stroke();
+      ctx.strokeStyle = ink; ctx.lineWidth = 2;
+      eyes(2, 6, 5);
+      ctx.beginPath(); ctx.arc(2, 12, 3, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
+    } else if (kind === "bumper") {
+      var sq = c ? c.squash : 0;
+      ctx.translate(0, 4);
+      ctx.scale(1 + sq * 1.2, 1 - sq * 1.2);
+      ctx.fillStyle = "#c97a96";
+      ctx.beginPath(); ctx.ellipse(0, 10, 19, 6, 0, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "#f4a6bd";
+      roundish(ctx, -17, -14, 34, 24, 10); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(-17, -3, 34, 5);
+      ctx.strokeStyle = ink; ctx.beginPath(); ctx.moveTo(-17, -3); ctx.lineTo(17, -3); ctx.moveTo(-17, 2); ctx.lineTo(17, 2); ctx.stroke();
+      eyes(0, -8, 6);
+      if (c) {
+        ctx.fillStyle = "#3a2a22";
+        for (var q = 0; q < c.charges; q++) { ctx.beginPath(); ctx.arc(-14 + q * 4, 16, 1.2, 0, Math.PI * 2); ctx.fill(); }
+      }
+    } else if (kind === "decoy") {
+      ctx.translate(0, bob);
+      ctx.fillStyle = "#ffb347";
+      ctx.beginPath(); ctx.arc(0, 2, 15, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "#ff8f3a";
+      ctx.beginPath(); ctx.arc(-6, -6, 3, 0, Math.PI * 2); ctx.arc(7, -4, 2.4, 0, Math.PI * 2); ctx.arc(1, 10, 2.4, 0, Math.PI * 2); ctx.fill();
+      eyes(0, 0, 5.5);
+      ctx.beginPath(); ctx.arc(0, 5, 5, 0.1 * Math.PI, 0.9 * Math.PI); ctx.stroke();
+      ctx.fillStyle = "#e05645";
+      ctx.beginPath(); ctx.moveTo(-9, -14); ctx.lineTo(0, -10); ctx.lineTo(-9, -6); ctx.closePath(); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(9, -14); ctx.lineTo(0, -10); ctx.lineTo(9, -6); ctx.closePath(); ctx.fill(); ctx.stroke();
+    } else if (kind === "reservoir") {
+      ctx.fillStyle = "#f6f1e0";
+      roundish(ctx, -14, -18, 28, 36, 8); ctx.fill();
+      ctx.save();
+      roundish(ctx, -14, -18, 28, 36, 8); ctx.clip();
+      ctx.fillStyle = "#2f4fa0"; ctx.fillRect(-15, -6, 30, 26);
+      ctx.fillStyle = "#5a7cd4"; ctx.fillRect(-15, -6, 30, 3);
+      ctx.restore();
+      roundish(ctx, -14, -18, 28, 36, 8); ctx.stroke();
+      ctx.fillStyle = "#8a96a6"; roundish(ctx, -10, -24, 20, 8, 3); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "#c4ccd4"; ctx.fillRect(14, 4, 8, 5); ctx.strokeRect(14, 4, 8, 5);
+      eyes(0, 2, 5.5);
+      ctx.beginPath(); ctx.arc(0, 8, 3, 0.15 * Math.PI, 0.85 * Math.PI); ctx.stroke();
+      ctx.fillStyle = "#fff";
+      ctx.font = "800 8px sans-serif"; ctx.textAlign = "center"; ctx.fillText("+50", 0, -9);
+    }
+    ctx.globalAlpha = 1;
+    if (c) {
+      if (c.boost.fence) {
+        ctx.strokeStyle = "#2f8f4a"; ctx.lineWidth = 2; ctx.setLineDash([2, 3]);
+        ctx.beginPath(); ctx.arc(0, 2, 24, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+      }
+      if (c.boost.water) {
+        ctx.fillStyle = "#6eb7e8";
+        ctx.beginPath(); ctx.arc(-18, -16 + Math.sin(t * 5) * 1.5, 2.6, 0, Math.PI * 2); ctx.arc(18, -12 + Math.cos(t * 5) * 1.5, 2.2, 0, Math.PI * 2); ctx.fill();
+      }
+      if (c.hp < c.max) miniBar(ctx, 0, 22, c.hp / c.max);
+    }
+    ctx.restore();
+  }
+  function drawComps(ctx, t) {
+    play.comps.forEach(function (c) { drawCompAt(ctx, c.kind, c.x, c.y - 2, 1, c, t); });
+  }
+  function drawDrops(ctx, t) {
+    play.drops.forEach(function (d) {
+      var blink = d.life < 3 && Math.floor(t * 8) % 2 === 0;
+      if (blink) return;
+      var by = d.y + Math.sin(t * 4 + d.bob) * 2.5;
+      ctx.save();
+      ctx.translate(d.x, by);
+      ctx.strokeStyle = "rgba(47,79,160,0.45)"; ctx.lineWidth = 2; ctx.setLineDash([3, 3]);
+      ctx.beginPath(); ctx.arc(0, 0, 17 + Math.sin(t * 6) * 1.5, 0, Math.PI * 2); ctx.stroke(); ctx.setLineDash([]);
+      ctx.fillStyle = "#2f4fa0"; ctx.strokeStyle = "#3a2a22"; ctx.lineWidth = 2.4;
+      ctx.beginPath();
+      ctx.moveTo(0, -12);
+      ctx.bezierCurveTo(10, 0, 11, 6, 0, 10);
+      ctx.bezierCurveTo(-11, 6, -10, 0, 0, -12);
+      ctx.fill(); ctx.stroke();
+      ctx.fillStyle = "rgba(255,255,255,0.8)";
+      ctx.beginPath(); ctx.arc(-3.5, 1, 2.2, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#fff"; ctx.font = "800 8px sans-serif"; ctx.textAlign = "center";
+      ctx.fillText("+" + d.v, 0, 22);
+      ctx.restore();
+    });
+  }
+  function drawBeams(ctx, t) {
+    play.beams.forEach(function (b) {
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, b.life / 0.2);
+      ctx.strokeStyle = "#d4a52a"; ctx.lineWidth = 3; ctx.lineCap = "round";
+      ctx.beginPath(); ctx.moveTo(b.x1, b.y1);
+      var mx = (b.x1 + b.x2) / 2, my = (b.y1 + b.y2) / 2;
+      ctx.quadraticCurveTo(mx + 6, my - 6, b.x2, b.y2);
+      ctx.stroke();
+      ctx.strokeStyle = "#f6df8a"; ctx.lineWidth = 1.6;
+      ctx.beginPath(); ctx.arc(b.x2, b.y2, 5, 0, 4.2); ctx.stroke();
+      ctx.restore();
+    });
+  }
+  function drawDangerBand(ctx) {
+    var k = play.placing, def = k && COMPS[k];
+    if (!def || !def.aggro) return;
+    ctx.save();
+    ctx.lineCap = "round"; ctx.lineJoin = "round";
+    ctx.strokeStyle = "rgba(224,86,69,0.13)";
+    ctx.lineWidth = def.aggro * 2;
+    play.lanes.forEach(function (L) {
+      if (!L.length) return;
+      ctx.beginPath(); ctx.moveTo(L[0].x, L[0].y);
+      for (var i = 1; i < L.length; i++) ctx.lineTo(L[i].x, L[i].y);
+      ctx.stroke();
+    });
+    ctx.restore();
   }
 
   function drawStain(ctx, s, t) {
@@ -2649,15 +3328,15 @@
     var fly = m.kind === "flyer" ? -14 + Math.sin(t * 7 + (m.id || 0)) * 3 : 0;
     var hop = (m.hopping && m.hopping > 0) ? -10 * Math.sin((1 - Math.max(0, m.hopping) / 0.55) * Math.PI) : 0;
     var bite = 0, shake = 0;
-    if (m.breaking) {
+    if ((m.breaking || m.compChewing)) {
       bite = 3 + Math.sin(t * 28) * 2;
       shake = Math.sin(t * 50) * 1.6;
     }
     ctx.translate(
-      x + shake + (m.breaking ? Math.cos(m.breakAng || 0) * bite * 0.4 : 0),
-      y + Math.sin(t * 3 + (m.id || 1)) * 1.2 + hop + fly + (m.breaking ? Math.sin(m.breakAng || 0) * bite * 0.4 : 0)
+      x + shake + ((m.breaking || m.compChewing) ? Math.cos(m.breakAng || 0) * bite * 0.4 : 0),
+      y + Math.sin(t * 3 + (m.id || 1)) * 1.2 + hop + fly + ((m.breaking || m.compChewing) ? Math.sin(m.breakAng || 0) * bite * 0.4 : 0)
     );
-    if (m.breaking && m.breakAng != null) ctx.rotate(Math.sin(t * 22) * 0.18);
+    if ((m.breaking || m.compChewing) && m.breakAng != null) ctx.rotate(Math.sin(t * 22) * 0.18);
     ctx.scale(sc, sc);
     if (m.hurt > 0) ctx.globalAlpha = 0.7 + Math.sin(t * 30) * 0.3;
     var ink = "#5a5562";
@@ -2714,7 +3393,7 @@
     ctx.moveTo(5, -5); ctx.lineTo(2, -3.5);
     ctx.stroke();
     ctx.beginPath();
-    if (m.breaking) {
+    if ((m.breaking || m.compChewing)) {
       ctx.arc(0, 4, 3.4, 0.15, Math.PI - 0.15);
       ctx.stroke();
       ctx.fillStyle = "#3a2a22";
@@ -2833,7 +3512,7 @@
     if (endBtn) endBtn.addEventListener("click", function () {
       if (window.DDAudio) window.DDAudio.unlock();
       sfx("tap");
-      beginEndless();
+      openLoadout(0);
     });
     document.getElementById("btn-how").addEventListener("click", function () {
       if (window.DDAudio) window.DDAudio.unlock();
@@ -2863,6 +3542,10 @@
       closeModal("modal-pause");
       showScreen("how");
     });
+    var ldStart = document.getElementById("btn-loadout-start");
+    if (ldStart) ldStart.addEventListener("click", function () { if (window.DDAudio) window.DDAudio.unlock(); sfx("tap"); startFromLoadout(); });
+    var ldBack = document.getElementById("btn-loadout-back");
+    if (ldBack) ldBack.addEventListener("click", function () { sfx("tap"); showScreen(loadoutFor === 0 ? "menu" : "levels"); });
     var calloutOk = document.getElementById("btn-callout-ok");
     if (calloutOk) calloutOk.addEventListener("click", function () { sfx("tap"); dismissCallout(); });
     document.getElementById("btn-set-back").addEventListener("click", function () { sfx("tap"); showScreen("menu"); });
@@ -2886,8 +3569,8 @@
     });
     document.getElementById("btn-again").addEventListener("click", function () {
       sfx("tap");
-      if (play && play.endless) beginEndless({ diff: play.diff });
-      else if (play) beginLevel(play.id, { diff: play.diff });
+      if (play && play.endless) beginEndless({ diff: play.diff, loadout: play.loadout.slice() });
+      else if (play) beginLevel(play.id, { diff: play.diff, loadout: play.loadout.slice() });
     });
     document.getElementById("btn-end-levels").addEventListener("click", function () {
       sfx("tap");
@@ -2905,6 +3588,7 @@
           return;
         }
         play.tool = tool;
+        play.placing = null;
         sfx("select");
         syncTools();
         teachColor(tool);
@@ -3131,6 +3815,14 @@
       crayons: { yellow: !!save.crayons.yellow, purple: !!save.crayons.purple },
       combos: play.combos.map(function (c) { return { kind: c.kind, x: c.x, y: c.y }; }),
       pads: play.pads.map(function (p) { return { x: p.x, y: p.y, id: p.id }; }),
+      comps: play.comps.map(function (c) { return { id: c.id, kind: c.kind, x: c.x, y: c.y, hp: c.hp, max: c.max, fill: c.fill, charges: c.charges, life: c.life, boost: { water: c.boost.water, sharp: c.boost.sharp, fence: c.boost.fence } }; }),
+      drops: play.drops.map(function (d) { return { id: d.id, x: d.x, y: d.y, v: d.v, life: d.life }; }),
+      cooldowns: JSON.parse(JSON.stringify(play.cooldowns)),
+      loadout: play.loadout.slice(),
+      placing: play.placing,
+      collected: play.collected,
+      placed: play.placed,
+      inkBonus: play.inkBonus,
       strokes: play.strokes.map(function (s) {
         return { id: s.id, color: s.color, closed: s.closed, triangle: !!s.triangle, throughPuddle: s.throughPuddle, length: s.length, n: s.pts.length, hp: s.hp, charges: s.charges };
       }),
@@ -3141,7 +3833,7 @@
         return {
           id: m.id, kind: m.kind, boss: m.boss || null, x: m.x, y: m.y, hp: m.hp, max: m.max,
           phase: m.phase || 0, armor: !!m.armor, hopping: !!(m.hopping > 0), visible: monsterVisible(m),
-          chew: m.chew || 0, tiny: !!m.tiny, leaked: !!m.leaked, lane: m.lane, breaking: !!m.breaking, stillT: m.stillT || 0,
+          chew: m.chew || 0, tiny: !!m.tiny, leaked: !!m.leaked, lane: m.lane, breaking: !!m.breaking, stillT: m.stillT || 0, stun: m.stun || 0, chewingComp: !!m.compChewing,
           detour: m.detour ? { x: m.detour.x, y: m.detour.y, pathLen: m.detour.pathLen } : null,
         };
       }),
@@ -3214,6 +3906,16 @@
       return st;
     },
     spawnMonster: function (opts) { return play ? spawnMonster(opts) : null; },
+    place: function (kind, x, y) { var c = play ? placeComp(kind, x, y) : null; return c ? { id: c.id, kind: c.kind, x: c.x, y: c.y } : null; },
+    placeFail: function () { return lastPlaceFail; },
+    collectDrops: function () { return play ? collectAllDrops() : 0; },
+    setPlacing: function (k) { if (play) { play.placing = k && COMPS[k] ? k : null; syncTools(); updatePackets(); updateLegend(); } },
+    setLoadout: function (list) { save.loadout = (list || []).slice(); persist(); },
+    openLoadout: function (id) { openLoadout(id); },
+    comps: COMPS,
+    compOrder: COMP_ORDER,
+    eligible: eligibleComps,
+    slots: slotsFor,
     addStars: function (n) { if (play) { play.starsHave += n; updateHud(); } },
     unlockCrayon: function (name) {
       if (name === "yellow" || name === "purple") save.crayons[name] = true;
@@ -3243,6 +3945,7 @@
     window.addEventListener("resize", fitStage);
     applyAudioSettings();
     syncSettingButtons();
+    renderCodexComps();
     bindUI();
     watchBattery();
     showScreen("menu");

@@ -101,6 +101,11 @@
     chew() { noise(0.1, 0.05, 500); tone(200, 0.08, "triangle", 0.04); },
     split() { tone(400, 0.08, "sine", 0.05); tone(600, 0.1, "sine", 0.05, now() + 0.06); },
     fold() { noise(0.12, 0.04, 300); tone(180, 0.14, "sine", 0.04, now(), 120); },
+    place() { tone(300, 0.08, "triangle", 0.07, now(), 200); tone(420, 0.08, "sine", 0.05, now() + 0.05); },
+    drip() { tone(900, 0.07, "sine", 0.05, now(), 600); tone(1200, 0.06, "sine", 0.04, now() + 0.06); },
+    collect() { tone(740, 0.07, "sine", 0.07); tone(990, 0.07, "sine", 0.06, now() + 0.05); tone(1320, 0.09, "sine", 0.05, now() + 0.1); },
+    shave() { noise(0.05, 0.04, 1500); tone(1100, 0.04, "square", 0.03); },
+    bump() { tone(220, 0.1, "sine", 0.09, now(), 440); tone(520, 0.08, "triangle", 0.05, now() + 0.06); },
     unlock() {
       const t = now();
       [659, 784, 1046].forEach((f, i) => tone(f, 0.16, "sine", 0.07, t + i * 0.08));
