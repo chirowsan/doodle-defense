@@ -17,6 +17,8 @@
       --red: #e05645;
       --green: #3ea15c;
       --rubber: #f4a4b8;
+      --yellow: #e8c130;
+      --purple: #8a5ad4;
     }
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     html, body {
@@ -220,12 +222,14 @@
       padding: 6px 12px;
       border-radius: 14px;
       display: none;
-      white-space: nowrap;
+      white-space: normal;
+      text-align: center;
+      max-width: 86%;
       pointer-events: none;
     }
     #hint.on { display: block; }
     #dock {
-      flex: 0 0 154px;
+      flex: 0 0 148px;
       width: 100%;
       z-index: 3;
       pointer-events: auto;
@@ -252,14 +256,14 @@
     }
     #tools {
       display: grid;
-      grid-template-columns: 1fr 1fr 1fr 1fr;
-      gap: 8px;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 4px;
     }
     .tool {
       border: 3px solid var(--ink);
       border-radius: 16px;
       background: #fff8e6;
-      min-height: 86px;
+      min-height: 74px; padding: 2px 0;
       cursor: pointer;
       font-family: inherit;
       color: var(--ink);
@@ -271,14 +275,18 @@
       box-shadow: 2px 3px 0 rgba(58,42,34,.25);
     }
     .tool .swatch {
-      width: 28px; height: 46px; border-radius: 8px 8px 6px 6px;
+      width: 18px; height: 32px; border-radius: 7px 7px 5px 5px;
       border: 2px solid var(--ink);
     }
     .tool.blue .swatch { background: var(--blue); }
     .tool.red .swatch { background: var(--red); }
     .tool.green .swatch { background: var(--green); }
-    .tool.eraser .swatch { width: 36px; height: 28px; border-radius: 8px 10px 6px 8px; background: var(--rubber); }
-    .tool .nm { font-size: 12px; font-weight: 800; }
+    .tool.eraser .swatch { width: 26px; height: 20px; border-radius: 7px 9px 5px 7px; background: var(--rubber); }
+    .tool.yellow .swatch { background: var(--yellow); }
+    .tool.purple .swatch { background: var(--purple); }
+    .tool .nm { font-size: 10px; font-weight: 800; }
+    .tool.lock { opacity: .45; }
+    .tool:disabled { opacity: .45; cursor: default; }
     .tool.sel { background: #fff3b0; transform: translateY(-4px); }
     .modal {
       position: absolute; inset: 0;
@@ -294,6 +302,48 @@
     .visually-hidden {
       position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0);
     }
+
+    #screen-levels { overflow-y: auto; align-items: stretch; pointer-events: auto; -webkit-overflow-scrolling: touch; }
+    #screen-levels .logo, #screen-levels .tag, #screen-levels .btn { align-self: center; pointer-events: auto; }
+    #level-list { width: 100%; padding: 0 16px; margin: 4px 0 10px; gap: 8px; }
+    .world {
+      width: min(350px, 100%);
+      margin: 0 auto;
+      background: #fff8e6;
+      border: 3px solid var(--ink);
+      border-radius: 18px;
+      padding: 8px 8px 10px;
+      box-shadow: 3px 3px 0 rgba(58,42,34,.18);
+    }
+    .world h3 { margin: 0 0 8px; font-size: 15px; text-align: center; }
+    .world-pages { display: flex; justify-content: space-between; gap: 4px; }
+    .pg {
+      flex: 1;
+      border: 2px solid var(--ink);
+      border-radius: 12px;
+      background: #ffe17a;
+      min-height: 56px;
+      font-weight: 800;
+      font-family: inherit;
+      color: var(--ink);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 1px; padding: 4px 0 3px; cursor: pointer;
+    }
+    .pg.boss { background: #f4c4b0; }
+    .pg.lock { background: #d8cbb6; opacity: .75; cursor: default; }
+    .pg .num { font-size: 15px; line-height: 1; }
+    .pg .stars { font-size: 9px; color: #c98910; letter-spacing: -0.5px; min-height: 11px; }
+    .pg .lab { font-size: 9px; font-weight: 700; color: #6a5544; }
+    #levels-tag { max-width: 330px; }
+    #rating-stars {
+      font-size: 30px;
+      letter-spacing: 4px;
+      margin: 2px 0 8px;
+      color: #e6b43a;
+    }
+    #rating-stars .off { color: #d8cbb6; }
+    #unlock-note { font-size: 14px; color: #226c36; }
+    .btn.lavender { background: #d7c4f4; }
   </style>
 </head>
 <body>
@@ -305,13 +355,14 @@
         <h1 class="logo">Doodle<br>Defense</h1>
         <div class="tag">Draw the paths. Your doodles walk them.</div>
         <button class="btn" id="btn-play" data-testid="btn-play">Play</button>
+        <button class="btn lavender" id="btn-endless" data-testid="btn-endless">Endless Sketch</button>
         <button class="btn mint" id="btn-how" data-testid="btn-how">How to play</button>
         <button class="btn ghost" id="btn-settings" data-testid="btn-settings">Settings</button>
       </section>
 
       <section id="screen-levels" class="screen" data-testid="screen-levels">
-        <h1 class="logo" style="font-size:34px;margin-top:36px">Pick a page</h1>
-        <div class="tag">Easy is on. Draw whatever you like.</div>
+        <h1 class="logo" style="font-size:34px;margin-top:28px">Pick a page</h1>
+        <div class="tag" id="levels-tag">Normal is on. Little kids can switch to Easy.</div>
         <div id="level-list"></div>
         <button class="btn ghost" id="btn-levels-back" data-testid="btn-levels-back">Back</button>
       </section>
@@ -321,9 +372,10 @@
           <h2>How to play</h2>
           <div class="tiny">
             <p>There are no ready-made lanes. <b>You draw the paths</b> with your finger, and friendly doodles walk along your line.</p>
-            <p><b>Blue</b> makes a watery trail that slows scribbles. <b>Red</b> is speedy. <b>Green</b> grows a vine wall that blocks the way.</p>
-            <p>Draw a <b>loop</b> and doodles walk in a circle to guard. Draw through a <b>puddle</b> to make swimmers. The <b>eraser</b> rubs out a line.</p>
-            <p>Ink is used up as you draw, then fills back in. Protect the sticker house, or collect stars — each page tells you which.</p>
+            <p><b>Blue</b> slows scribbles. <b>Red</b> is speedy. <b>Green</b> grows a vine wall. Unlock <b>Zap</b> (yellow) and <b>Blink</b> (purple) by beating bosses. Zap ticks along the line. Blink hops between the two ends.</p>
+            <p>Crossing colors makes a special spot: <b>blue × red</b> is a splash, <b>green × blue</b> is a bouncy bush, <b>red × green</b> is a thorn patch. A <b>triangle</b> becomes a launch pad. A <b>loop around a star</b> grabs it.</p>
+            <p>Watch for wind, coffee stains, folding pages, and wandering puddles. Some scribbles hop over vines, nibble lines, split in two, or hide until they touch blue.</p>
+            <p>Finish a page for up to <b>three stars</b>: win, keep some ink, and don't let the house get smudged. <b>Endless Sketch</b> is a high-score mode. Ink fills back slower on later pages.</p>
           </div>
           <button class="btn" id="btn-how-back" data-testid="btn-how-back">Got it</button>
         </div>
@@ -334,8 +386,9 @@
           <h2>Settings</h2>
           <div class="set-row">Difficulty
             <div class="seg" id="set-diff">
-              <button data-val="easy" class="on" data-testid="diff-easy">Easy</button>
-              <button data-val="normal" data-testid="diff-normal">Normal</button>
+              <button data-val="easy" data-testid="diff-easy">Easy</button>
+              <button data-val="normal" class="on" data-testid="diff-normal">Normal</button>
+              <button data-val="hard" data-testid="diff-hard">Hard</button>
             </div>
           </div>
           <div class="set-row">Battery saver
@@ -376,6 +429,8 @@
           <span class="visually-hidden" id="ink-count" data-testid="ink-count">0</span>
           <span class="visually-hidden" id="house-hp" data-testid="house-hp">0</span>
           <span class="visually-hidden" id="star-count" data-testid="star-count">0</span>
+          <span class="visually-hidden" id="score-count" data-testid="score-count">0</span>
+          <span class="visually-hidden" id="wave-count" data-testid="wave-count">0</span>
         </div>
         <div id="dock">
           <div id="ink-wrap">
@@ -386,6 +441,8 @@
             <button class="tool blue sel" data-tool="blue" data-testid="tool-blue"><span class="swatch"></span><span class="nm">Blue</span></button>
             <button class="tool red" data-tool="red" data-testid="tool-red"><span class="swatch"></span><span class="nm">Red</span></button>
             <button class="tool green" data-tool="green" data-testid="tool-green"><span class="swatch"></span><span class="nm">Green</span></button>
+            <button class="tool yellow lock" data-tool="yellow" data-testid="tool-yellow"><span class="swatch"></span><span class="nm">Zap</span></button>
+            <button class="tool purple lock" data-tool="purple" data-testid="tool-purple"><span class="swatch"></span><span class="nm">Blink</span></button>
             <button class="tool eraser" data-tool="eraser" data-testid="tool-eraser"><span class="swatch"></span><span class="nm">Eraser</span></button>
           </div>
         </div>
@@ -403,7 +460,9 @@
       <div id="modal-end" class="modal" data-testid="modal-end">
         <div class="panel">
           <h2 id="end-title" data-testid="end-title">What a doodle!</h2>
+          <div id="rating-stars" data-testid="rating-stars" data-stars="0" hidden></div>
           <p id="end-blurb" data-testid="end-blurb"></p>
+          <p id="unlock-note" data-testid="unlock-note" hidden></p>
           <button class="btn" id="btn-again" data-testid="btn-again">Draw again</button>
           <button class="btn ghost" id="btn-end-levels" data-testid="btn-end-levels">Pages</button>
         </div>
@@ -411,6 +470,7 @@
     </div>
   </div>
   <script src="src/audio.js"></script>
+  <script src="src/levels.js"></script>
   <script src="src/game.js"></script>
 </body>
 </html>

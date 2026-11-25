@@ -89,6 +89,20 @@
       const t = now();
       [392, 330, 262].forEach((f, i) => tone(f, 0.26, "sine", 0.07, t + i * 0.13, f * 0.85));
     },
+    burst() { noise(0.14, 0.07, 350); tone(420, 0.12, "sine", 0.05, now(), 180); },
+    bush() { tone(340, 0.1, "triangle", 0.06); tone(520, 0.12, "sine", 0.04, now() + 0.05); },
+    thorn() { tone(260, 0.07, "square", 0.04); noise(0.06, 0.04, 800); },
+    launch() { tone(480, 0.12, "sine", 0.07, now(), 880); },
+    zap() { tone(980, 0.06, "square", 0.04); tone(1320, 0.08, "sine", 0.05, now() + 0.03, 700); },
+    tele() { tone(520, 0.08, "sine", 0.05, now(), 280); tone(280, 0.1, "sine", 0.05, now() + 0.05, 640); },
+    jump() { tone(300, 0.1, "triangle", 0.05, now(), 520); },
+    chew() { noise(0.1, 0.05, 500); tone(200, 0.08, "triangle", 0.04); },
+    split() { tone(400, 0.08, "sine", 0.05); tone(600, 0.1, "sine", 0.05, now() + 0.06); },
+    fold() { noise(0.12, 0.04, 300); tone(180, 0.14, "sine", 0.04, now(), 120); },
+    unlock() {
+      const t = now();
+      [659, 784, 1046].forEach((f, i) => tone(f, 0.16, "sine", 0.07, t + i * 0.08));
+    },
   };
 
   function unlock() {
