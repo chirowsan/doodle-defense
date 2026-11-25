@@ -372,10 +372,10 @@
   /* ---------- tuning ---------- */
   var DIFF_ORDER = ["easy", "normal", "hard", "nightmare"];
   var DIFFS = {
-    easy:      { lives: 5, ink: 1.5,  refill: 1.6,  hp: 0.8,  spd: 0.9,  kill: 2,   live: 1.0, bonus: 1.5, esc: 0 },
-    normal:    { lives: 3, ink: 1.0,  refill: 0.03, hp: 1.25, spd: 1.0,  kill: 0.4, live: 1.5, bonus: 0.5, esc: 0.16 },
-    hard:      { lives: 2, ink: 0.85, refill: 0,    hp: 1.5,  spd: 1.15, kill: 0.2, live: 1.8, bonus: 0.25, esc: 0.16 },
-    nightmare: { lives: 1, ink: 0.7,  refill: 0,    hp: 1.9,  spd: 1.3,  kill: 0,   live: 2.2, bonus: 0.1, esc: 0.2 },
+    easy:      { lives: 5, ink: 1.5,  refill: 1.6,  hp: 0.8,  spd: 0.9,  kill: 2,   live: 1.0, bonus: 1.5, esc: 0, wear: 0 },
+    normal:    { lives: 3, ink: 1.0,  refill: 0.03, hp: 1.25, spd: 1.0,  kill: 0.4, live: 1.5, bonus: 0.5, esc: 0.16, wear: 0 },
+    hard:      { lives: 2, ink: 0.85, refill: 0,    hp: 1.5,  spd: 1.15, kill: 0.2, live: 1.8, bonus: 0.25, esc: 0.16, wear: 0 },
+    nightmare: { lives: 1, ink: 0.7,  refill: 0,    hp: 1.9,  spd: 1.3,  kill: 0,   live: 2.2, bonus: 0.1, esc: 0.2, wear: 0.7 },
   };
   var BASE_COST = 0.14;
   var COLOR_COST = { blue: 0.8, red: 1.2, green: 1.4, yellow: 1.5, purple: 1.3 };
@@ -453,6 +453,13 @@
   // so Inkwells (and kill / wave-clear bonuses) matter more; star pages need a fixed route so they keep more ink.
   var INK_BY_PAGE = { 1: 0.85, 2: 0.85, 3: 0.85, 4: 0.85, 5: 0.85, 6: 0.85, 7: 0.7, 8: 0.7, 9: 1.2, 10: 0.6, 11: 0.6, 12: 0.7, 13: 0.5, 14: 0.5, 15: 0.6, 16: 1.0, 17: 0.6, 18: 0.65 };
   var HP_BY_PAGE = { 7: 1, 8: 1.3, 9: 1.3, 10: 1.3, 11: 1.3, 12: 1.3, 13: 1.8, 14: 1.8, 15: 1.8, 16: 1, 17: 1.8, 18: 1.3 };
+  /* doodle453: you start a page with only a sliver of the page's ink; place an Inkwell and tap drops to build up */
+  var START_INK = { 1: 45, 2: 80, 3: 60, 4: 70, 5: 100, 6: 120, 7: 85, 8: 90, 9: 170, 10: 85, 11: 60, 12: 170, 13: 130, 14: 150, 15: 170, 16: 380, 17: 200, 18: 170 };
+  var STAR_INK = 20; /* a collected star pays a little ink back */
+  function startInkFor(id, inkMax, mul) {
+    var v = (START_INK[id] != null ? START_INK[id] : Math.round(inkMax * 0.35)) * (mul || 1);
+    return Math.min(inkMax, v);
+  }
   function inkScaleFor(id) { return INK_BY_PAGE[id] != null ? INK_BY_PAGE[id] : INK_SCALE; }
   function hpMulFor(id) { return HP_BY_PAGE[id] != null ? HP_BY_PAGE[id] : 1; }
   var COMPS = {
@@ -604,7 +611,7 @@
     seq = 1;
     timeScale = opts.timeScale != null ? opts.timeScale : 1;
     var inkMax = opts.inkMax != null ? opts.inkMax : Math.round((lv.ink || 150) * d.ink * (opts.inkScale != null ? opts.inkScale : inkScaleFor(lv.id)));
-    var ink = opts.ink != null ? opts.ink : inkMax;
+    var ink = opts.ink != null ? opts.ink : startInkFor(lv.id, inkMax, d.ink);
     if (ink > inkMax) inkMax = ink;
     var lives = opts.houseHp != null ? opts.houseHp : d.lives;
     var fs = fieldSize();
@@ -660,7 +667,7 @@
     timeScale = opts.timeScale != null ? opts.timeScale : 1;
     var lives = opts.houseHp != null ? opts.houseHp : d.lives + 2;
     var inkMax = Math.round(130 * d.ink);
-    var ink = opts.ink != null ? opts.ink : inkMax;
+    var ink = opts.ink != null ? opts.ink : Math.round(inkMax * 0.55);
     if (ink > inkMax) inkMax = ink;
     var scale = (fieldSize().w / FIELD_W + fieldSize().h / FIELD_H) / 2;
     play = emptyPlay({
@@ -1141,7 +1148,7 @@
       throughPuddle: through, length: len,
       tool: tool.id, width: color === "green" ? tool.width + 2 : tool.width, highlight: !!tool.highlight,
       hp: baseHp * (tool.hpMul || 1), maxHp: baseHp * (tool.hpMul || 1),
-      charges: color === "yellow" ? 8 : 0,
+      charges: color === "yellow" ? 8 : 0, born: play.t,
     };
     play.strokes.push(st);
     play.firstDraw = true;
@@ -1206,7 +1213,8 @@
     play.starsHave += 1;
     if (play.endless) play.score += 8;
     sfx("star");
-    floatText(stt.x, stt.y - 10, "Star!", "#c98910");
+    if (!play.endless) play.ink = Math.min(play.inkMax, play.ink + STAR_INK);
+    floatText(stt.x, stt.y - 10, play.endless ? "Star!" : "Star! +" + STAR_INK, "#c98910");
     puff(stt.x, stt.y, "#ffe57a", 8);
   }
   function rebuildCombos() {
@@ -1857,6 +1865,19 @@
   }
 
   /* ---------- simulation ---------- */
+  /* doodle453: crayon lines wear out. A kill box lasts about a wave and a half, then it has to be redrawn. */
+  var WEAR_LIFE = { pen: 34, brush: 60, highlighter: 18 };
+  function strokeLife(st) { return (WEAR_LIFE[st.tool || "pen"] || 34) * (D().wear || 0); }
+  function tickWear() {
+    if (!D().wear) return;
+    for (var i = play.strokes.length - 1; i >= 0; i--) {
+      var st = play.strokes[i];
+      if (play.t - (st.born || 0) > strokeLife(st)) {
+        floatText(st.pts[0].x, st.pts[0].y - 8, "Faded", "#8a8070");
+        eraseStroke(st);
+      }
+    }
+  }
   function updatePlay(dt) {
     if (!play || play.paused) return;
     if (play.ended) {
@@ -1871,6 +1892,7 @@
     if (!play.drawing) {
       play.ink = Math.min(play.inkMax, play.ink + play.refill * dt * (play.inkSlow > 0 ? 0.55 : 1));
     }
+    tickWear();
     tickFold(dt);
     tickPuddles(dt);
     spawnPending(dt);
@@ -2249,6 +2271,12 @@
     return { x: wp.x * CS + CS / 2, y: wp.y * CS + CS / 2, pathLen: found.d * CS };
   }
 
+  function compChewRate(m) {
+    var rate = 16;
+    if (m.kind === "armored") rate = 34;
+    if (m.kind === "boss") rate = 46;
+    return rate;
+  }
   function breakRate(m) {
     var rate = 16;
     if (m.kind === "armored") rate = 34;
@@ -2417,7 +2445,7 @@
       var spd = m.spd;
       if (m.kind === "mimic" && !m.revealed) spd *= 0.45;
       if (m.kind !== "flyer") {
-        if (touchingColor(m, "blue", 16)) spd *= 0.45;
+        if (touchingColor(m, "blue", 16)) { m.blueT = (m.blueT || 0) + dt; spd *= 0.45; } else if (m.blueT > 0) m.blueT = Math.max(0, m.blueT - dt * 0.5);
         if (highlightNear(m)) spd *= 0.6;
         if (glueAt(m)) spd *= 0.35;
         if (inPuddle(m.x, m.y, play.puddles)) spd *= 0.7;
@@ -2514,7 +2542,7 @@
       if (compChew) {
         var cc = m.compT;
         m.breakAng = Math.atan2(cc.y - m.y, cc.x - m.x);
-        damageComp(cc, breakRate(m) * dt);
+        damageComp(cc, compChewRate(m) * dt);
         m.compPulse = (m.compPulse || 0) + dt;
         if (m.compPulse >= 0.8) {
           m.compPulse = 0;
@@ -3032,6 +3060,7 @@
     play.strokes.forEach(function (st) {
       var folded = strokeFolded(st);
       if (folded) ctx.globalAlpha = 0.28;
+      else if (D().wear && play.t - (st.born || 0) > strokeLife(st) - 6) ctx.globalAlpha = 0.45;
       crayonStroke(ctx, st.pts, st.color, st.width || (st.color === "green" ? 11 : 9), st.id, st);
       if (st.color === "green") { vineTicks(ctx, st); if (st.hp > 0 && st.maxHp && st.hp < st.maxHp * 0.85) vineCracks(ctx, st); }
       if (st.color === "yellow") zapTicks(ctx, st, t);
