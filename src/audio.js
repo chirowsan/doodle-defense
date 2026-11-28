@@ -80,6 +80,7 @@
     erase() { noise(0.1, 0.05, 1200); tone(240, 0.1, "triangle", 0.04, now(), 140); },
     dry() { tone(180, 0.16, "sine", 0.07, now(), 90); },
     wave() { tone(392, 0.12, "triangle", 0.07); tone(523, 0.16, "triangle", 0.07, now() + 0.1); },
+    incoming() { tone(260, 0.12, "triangle", 0.07); tone(390, 0.18, "sine", 0.07, now() + 0.1); },
     phase() { tone(220, 0.2, "sawtooth", 0.06, now(), 110); },
     house() { tone(200, 0.18, "sine", 0.08, now(), 100); },
     pop() { tone(300, 0.1, "triangle", 0.07, now(), 90); noise(0.06, 0.04, 400); },
