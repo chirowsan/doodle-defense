@@ -23,6 +23,7 @@
       --rubber: #f4a4b8;
       --yellow: #e8c130;
       --purple: #8a5ad4;
+      --cyan: #3eb8bc;
     }
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     html, body {
@@ -63,6 +64,8 @@
       pointer-events: none;
     }
     .screen.on { display: flex; }
+    #screen-menu, #screen-levels, #screen-mixer { overflow-y: auto; pointer-events: auto; touch-action: pan-y; }
+    #screen-menu > *, #screen-levels > *, #screen-mixer > * { flex-shrink: 0; }
     .screen button, .screen .hit { pointer-events: auto; }
     .logo {
       margin: calc(28px + env(safe-area-inset-top, 0px)) 20px 6px;
@@ -105,6 +108,7 @@
     .btn.mint { background: #b6e3b0; }
     .btn.ghost { background: #fff8e6; width: 210px; font-size: 17px; }
     .btn:disabled { opacity: .45; }
+    .btn[hidden] { display: none; }
     .panel {
       margin-top: 48px;
       width: min(330px, calc(100% - 28px));
@@ -180,14 +184,20 @@
       height: auto;
       width: auto;
       flex: none;
-      display: flex;
+      display: grid;
+      grid-template-columns: max-content max-content minmax(0, 1fr) max-content;
       align-items: center;
-      justify-content: space-between;
-      gap: 6px;
+      gap: 4px;
       padding: calc(6px + env(safe-area-inset-top, 0px)) 8px 0;
       pointer-events: none;
     }
     #hud > * { pointer-events: auto; }
+    #hud #page-objective {
+      grid-column: 1 / -1; justify-self: center; max-width: 100%;
+      padding: 3px 9px; border: 1.5px dashed #b47745; border-radius: 10px;
+      background: #fff8e6; color: #4f362b; text-align: center;
+      font-size: 13px; line-height: 1.2; font-weight: 850; pointer-events: none;
+    }
     .pill {
       display: flex; align-items: center; gap: 6px;
       background: #fff8e6;
@@ -199,7 +209,7 @@
       min-width: 64px;
     }
     #level-chip { flex-direction: column; gap: 0; padding: 3px 10px; min-width: 0; }
-    #level-chip .nm { font-size: 11px; max-width: 96px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    #level-chip .nm { font-size: 11px; max-width: min(96px, 100%); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     #level-chip .wv { font-size: 11px; color: #6a5544; font-weight: 700; }
     #btn-pause, #btn-fs {
       width: 36px; height: 36px; border: 2px solid var(--ink);
@@ -221,8 +231,9 @@
       pointer-events: auto;
     }
     #field {
-      position: absolute; inset: 0;
-      width: 100%; height: 100%;
+      position: absolute; top: 0; left: 0;
+      width: calc(100% - var(--field-inset-right, 0px));
+      height: calc(100% - var(--field-inset-bottom, 166px));
     }
     #hint {
       position: absolute;
@@ -271,9 +282,13 @@
       border-radius: 999px;
       transform-origin: left center;
     }
+    #ink-pill.earned {
+      background: #dceaff;
+      color: #254e92;
+    }
     #tools {
       display: grid;
-      grid-template-columns: repeat(6, 1fr);
+      grid-template-columns: repeat(var(--crayon-slots, 4), minmax(0, 1fr));
       gap: 4px;
     }
     .tool {
@@ -301,12 +316,14 @@
     .tool.eraser .swatch { width: 26px; height: 20px; border-radius: 7px 9px 5px 7px; background: var(--rubber); }
     .tool.yellow .swatch { background: var(--yellow); }
     .tool.purple .swatch { background: var(--purple); }
+    .tool.cyan .swatch { background: var(--cyan); }
+    .tool[hidden] { display: none; }
     .tool .nm { font-size: 9px; font-weight: 800; line-height: 1; }
     .tool .fx { font-size: 8px; font-weight: 700; color: #6a5544; line-height: 1; letter-spacing: -0.2px; }
     #crayon-legend { /* kept for tests / screen readers; not shown on the play field */ }
     #draw-tools {
       display: grid;
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(var(--draw-slots, 1), minmax(0, 1fr));
       gap: 4px;
       margin: 0 0 4px;
     }
@@ -328,9 +345,10 @@
     }
     .dtool .ic { font-size: 14px; line-height: 1; }
     .dtool.sel { background: #fff3b0; transform: translateY(-2px); }
+    .dtool[hidden] { display: none; }
     #buddy-wrap { display: flex; gap: 4px; margin: 0 0 4px; }
     #buddy-wrap[hidden] { display: none; }
-    #btn-buddy, #btn-design-mini {
+    #btn-buddy, #btn-design-mini, #btn-guide-play, #btn-rally {
       flex: 1;
       border: 2px dashed var(--ink);
       border-radius: 10px;
@@ -339,7 +357,12 @@
       font-family: inherit; font-weight: 800; font-size: 10px; color: var(--ink);
       cursor: pointer;
     }
+    #btn-guide-play { background: #dfd9f7; font-size: 12px; }
     #btn-buddy.sel { background: #ffe98a; border-style: solid; }
+    #btn-rally { background: #ffe7a1; font-size: 12px; }
+    #btn-rally[hidden] { display: none; }
+    #btn-rally.pinned { border-style: solid; }
+    #btn-rally.sel { background: #f4c752; border-style: solid; }
 
     #packets { display: grid; gap: 4px; margin: 0 0 4px; }
     #packets[hidden] { display: none; }
@@ -364,6 +387,24 @@
     #screen-loadout { overflow-y: auto; align-items: stretch; pointer-events: auto; -webkit-overflow-scrolling: touch; }
     #screen-loadout .panel { align-self: center; margin-top: 22px; margin-bottom: 18px; width: min(352px, 94%); }
     #loadout-sub { font-size: 12px; font-weight: 700; margin: 0 0 8px; color: #6a5544; }
+    .page-brief {
+      text-align: left; background: #fff3cb; border: 2px dashed #b47745;
+      border-radius: 12px; padding: 6px 9px; margin: 0 0 8px;
+      font-weight: 750; font-size: 14px; line-height: 1.25;
+    }
+    .page-brief b { color: #874021; }
+    #loadout-star-help, #loadout-rally-help { display: block; color: #5d473a; margin-top: 3px; font-size: 13px; }
+    #loadout-star-help[hidden], #loadout-rally-help[hidden] { display: none; }
+    .intro-panel { width: min(330px, 100%); padding: 12px 15px; max-height: 100%; overflow: auto; }
+    #intro-type { font-size: 13px; text-transform: uppercase; letter-spacing: .08em; color: #874021; font-weight: 900; }
+    #intro-art {
+      display: grid; place-items: center; width: 82px; height: 76px; margin: 4px auto;
+      border: 2px dashed #c9b48a; border-radius: 15px; background: #fffdf3;
+    }
+    #intro-art svg { width: 62px; height: 60px; }
+    #intro-name { margin-bottom: 4px; font-size: 25px; }
+    #intro-text { font-size: 16px; }
+    #btn-intro-continue { width: 100%; margin: 0; font-size: 17px; }
     #loadout-grid { display: flex; flex-direction: column; gap: 6px; margin: 0 0 10px; }
     .lcard { display: flex; align-items: center; gap: 8px; text-align: left; padding: 5px 8px; border: 2.5px dashed var(--ink); border-radius: 12px; background: #fff3d0; color: var(--ink); font-family: inherit; cursor: pointer; }
     .lcard.on { background: #ffe98a; border-style: solid; }
@@ -423,6 +464,20 @@
     .pg .stars { font-size: 9px; color: #c98910; letter-spacing: -0.5px; min-height: 11px; }
     .pg .lab { font-size: 9px; font-weight: 700; color: #6a5544; }
     #levels-tag { max-width: 330px; }
+    #screen-equipment { overflow-y: auto; pointer-events: auto; }
+    .equipment-panel { margin: 14px auto; padding: 16px; }
+    .equipment-panel h2 { margin-bottom: 4px; }
+    #equipment-balance { color: #704090; font-size: 20px; }
+    .equipment-intro { font-size: 14px; }
+    .equipment-card {
+      margin: 0 0 8px; padding: 9px 11px; text-align: left; background: #fff8e6;
+      border: 2px dashed #c9b48a; border-radius: 12px; font-size: 14px;
+    }
+    .equipment-card b { font-size: 16px; }
+    .equipment-card span { display: block; margin: 2px 0 0; }
+    #screen-equipment .btn, #btn-end-equipment { width: 100%; font-size: 15px; }
+    .equipment-card .btn { padding: 8px; margin: 7px 0 2px; }
+    #equipment-status { min-height: 1.2em; font-size: 14px; color: #226c36; }
     #rating-stars {
       font-size: 30px;
       letter-spacing: 4px;
@@ -438,7 +493,7 @@
     .seg button:disabled { opacity: .5; }
     #plan {
       position: absolute; left: 6px; right: 6px;
-      top: calc(46px + env(safe-area-inset-top, 0px));
+      top: calc(100% + 4px);
       bottom: auto; z-index: 6;
       display: flex; align-items: center; gap: 6px;
       background: rgba(255,248,230,0.95); border: 2px solid var(--ink); border-radius: 14px;
@@ -446,6 +501,13 @@
       box-shadow: 2px 3px 0 rgba(58,42,34,.25);
     }
     #plan[hidden] { display: none; }
+    #hud #ambush-alert {
+      position: absolute; z-index: 6; top: calc(100% + 4px); left: 50%;
+      transform: translateX(-50%); padding: 5px 10px; border-radius: 12px;
+      background: #fff0ce; color: #8f2620; border: 2px solid #c74538;
+      font-size: 13px; font-weight: 800; white-space: nowrap; pointer-events: none;
+    }
+    #ambush-alert[hidden] { display: none; }
     #plan-text { flex: 1; font-size: 12px; font-weight: 700; line-height: 1.25; text-align: left; }
     #plan .btn { width: 84px; margin: 0; padding: 8px 4px; font-size: 14px; flex: 0 0 84px; }
     #field-wrap.planning #hint { bottom: 66px; }
@@ -454,24 +516,55 @@
     #star-rules li[data-ok="0"] { color: #8a7a68; }
     #star-rules[hidden] { display: none; }
 
-    #callout {
-      position: absolute; left: 50%; top: 28%; z-index: 8;
-      transform: translateX(-50%);
-      width: min(300px, 86%);
-      background: #fff8e6; border: 3px solid var(--ink); border-radius: 16px;
-      padding: 12px 12px 10px;
-      box-shadow: 4px 5px 0 rgba(58,42,34,.28);
-      display: flex; flex-direction: column; align-items: stretch; gap: 8px;
-      pointer-events: auto;
-    }
-    #callout[hidden] { display: none; }
-    #callout-text { flex: 1; font-size: 15px; font-weight: 800; line-height: 1.3; text-align: center; }
-    #callout .btn { width: 100%; margin: 0; padding: 8px 10px; font-size: 14px; flex: 0 0 auto; box-shadow: 2px 2px 0 #3a2a22; }
     #screen-how { overflow-y: auto; align-items: stretch; pointer-events: auto; -webkit-overflow-scrolling: touch; }
     #screen-how .panel { align-self: center; margin-top: 22px; margin-bottom: 18px; max-height: calc(100% - 40px); display: flex; flex-direction: column; }
-    .codex { text-align: left; overflow-y: auto; flex: 1; min-height: 0; -webkit-overflow-scrolling: touch; background: #fff; border-radius: 14px; padding: 10px 12px; margin: 0 0 12px; border: 2px dashed #d2c09a; font-weight: 650; font-size: 13px; line-height: 1.35; }
+    .codex { text-align: left; overflow-y: auto; touch-action: pan-y; flex: 1; min-height: 0; -webkit-overflow-scrolling: touch; background: #fff; border-radius: 14px; padding: 10px 12px; margin: 0 0 12px; border: 2px dashed #d2c09a; font-weight: 650; font-size: 13px; line-height: 1.35; }
     .codex h3 { margin: 10px 0 6px; font-size: 15px; color: #c74538; }
     .codex h3:first-child { margin-top: 0; }
+    #screen-guide { justify-content: center; pointer-events: auto; }
+    .guide-panel {
+      display: flex; flex-direction: column; gap: 8px; width: min(420px, calc(100% - 22px));
+      max-height: calc(100% - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+      margin: 0; padding: 12px; text-align: left;
+    }
+    .guide-panel h2 { margin: 0; }
+    .guide-tabs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+    .guide-tabs button {
+      min-height: 40px; padding: 4px 2px; border: 2px solid var(--ink); border-radius: 9px;
+      background: #fffdf3; color: var(--ink); line-height: 1.1; font-family: inherit;
+      font-size: 12px; font-weight: 800; cursor: pointer;
+    }
+    .guide-tabs button[aria-pressed="true"] { background: #ffe17a; box-shadow: 1px 2px var(--ink); }
+    #guide-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; padding: 1px 4px 1px 1px; }
+    .clip-picks { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+    .clip-picks button {
+      min-height: 34px; border: 1.5px solid var(--ink); border-radius: 9px; padding: 3px 7px;
+      background: #fffdf3; color: var(--ink); font: inherit; font-weight: 800; font-size: 12px;
+    }
+    .clip-picks button::before {
+      display: inline-block; width: 8px; height: 8px; margin-right: 4px; border-radius: 50%; background: var(--clip-swatch);
+    }
+    .clip-picks button[style*="--clip-swatch"]::before { content: ""; }
+    .clip-picks button[aria-pressed="true"] { background: #e9ddfa; box-shadow: 1px 1px var(--ink); }
+    .lesson-player {
+      margin: 0 0 6px; border: 2px solid #c9b48a; border-radius: 13px; overflow: hidden;
+      background: #fffaf0;
+    }
+    .lesson-scene { display: block; width: 100%; height: auto; }
+    .lesson-player figcaption { display: flex; gap: 6px; align-items: center; justify-content: space-between; padding: 5px 7px; }
+    .lesson-player h3 { margin: 0; font-size: 16px; line-height: 1.2; }
+    .lesson-replay {
+      color: var(--ink); background: #ffe17a; border: 1.5px solid var(--ink); border-radius: 9px;
+      min-height: 34px; white-space: nowrap; font: inherit; font-size: 13px; font-weight: 800; padding: 4px 7px; cursor: pointer;
+    }
+    #guide-clip-caption { font-size: 14px; margin: 0 0 7px; }
+    .lesson-details { font-size: 14px; margin-bottom: 6px; }
+    .lesson-details summary { min-height: 32px; padding-top: 6px; font-weight: 800; cursor: pointer; }
+    .lesson-details p { font-size: 13px; margin: 0 0 6px; }
+    .lesson-details .guide-meta { color: #65427c; font-weight: 850; margin-bottom: 4px; }
+    .quick-points { display: grid; gap: 3px; margin: 7px 0 10px; }
+    #btn-guide-back, #btn-guide-how { width: 100%; margin: 0; font-size: 16px; }
+    #btn-guide-equipment, #btn-guide-loadout { max-width: 100%; font-size: 15px; }
     .codex ul { list-style: none; margin: 0; padding: 0; }
     .codex li { margin: 0 0 7px; padding-left: 0; }
     .codex .sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; border: 1.5px solid var(--ink); margin-right: 4px; vertical-align: -1px; }
@@ -480,19 +573,28 @@
     .codex .sw.green { background: var(--green); }
     .codex .sw.yellow { background: var(--yellow); }
     .codex .sw.purple { background: var(--purple); }
+    .codex .sw.cyan { background: var(--cyan); }
     .codex .sw.eraser { background: var(--rubber); }
     #plan { align-items: stretch; }
-    #plan-text { font-size: 11px; max-height: 84px; overflow-y: auto; }
-    #plan-text .hint { color: #6a5544; font-weight: 700; }
+    #tutorial-setting[hidden] { display: none; }
+    .practice-text { font-size: 13px; line-height: 1.3; margin: 3px 0 5px; color: #4f362b; }
     #field-wrap.planning #hint { bottom: 62px; }
-    #plan-text { font-size: 11px; max-height: 92px; overflow-y: auto; pointer-events: none; }
+    #plan-text { font-size: 11px; max-height: 108px; overflow-y: auto; touch-action: pan-y; }
     #plan-icons { display: flex; flex-wrap: wrap; gap: 4px; align-items: center; }
     .pico {
-      display: flex; align-items: center; gap: 2px;
+      display: flex; align-items: center; gap: 4px;
       background: #fff; border: 1.5px solid var(--ink); border-radius: 999px;
       padding: 1px 6px 1px 3px; font-size: 10px; font-weight: 800; white-space: nowrap;
     }
-    .pico .dot { width: 12px; height: 12px; border-radius: 50%; border: 1.5px solid var(--ink); }
+    .monster-icon { display: block; flex: none; }
+    .pico .monster-icon { width: 23px; height: 22px; }
+    .codex .bestiary-card { display: flex; gap: 9px; align-items: center; background: #fff8e9; border: 1px solid #e5d4b8; padding: 7px; border-radius: 10px; }
+    .bestiary-card .monster-icon { width: 44px; height: 44px; }
+    .bestiary-card b, .bestiary-card .monster-look, .bestiary-card .monster-tip { display: block; }
+    .bestiary-card b { font-size: 14px; }
+    .bestiary-card .monster-look { color: #55405c; font-weight: 800; }
+    .bestiary-card .monster-tip { margin-top: 3px; }
+    #codex-monster-list, #codex-boss-list { touch-action: pan-y; }
     #screen-design { overflow-y: auto; align-items: stretch; pointer-events: auto; -webkit-overflow-scrolling: touch; }
     #screen-design .panel { align-self: center; margin-top: 16px; margin-bottom: 16px; width: min(352px, 94%); }
     #design-preview { width: 88px; height: 88px; margin: 0 auto 8px; display: block; }
@@ -506,21 +608,50 @@
     #design-cost { font-weight: 800; margin: 0 0 8px; }
     #design-slots { display: flex; gap: 6px; justify-content: center; margin: 0 0 10px; }
     .dslot { min-width: 72px; }
+    .mix-panel { width: min(366px, calc(100% - 24px)); margin: 16px auto; }
+    #mix-ink { display: inline-block; background: #fbdf8a; border: 2px solid var(--ink); border-radius: 22px; padding: 5px 13px; margin: 0 0 8px; }
+    #mix-progress, #mix-status { font-size: 13px; color: #5d473a; }
+    #mix-status { min-height: 18px; margin: 8px 0 6px; }
+    #mix-inputs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 10px; }
+    #mix-inputs button, #mix-recipes button {
+      background: #fff3d0; color: var(--ink); border: 2px solid var(--ink);
+      border-radius: 11px; font: 800 13px/1.2 "Trebuchet MS", sans-serif; font-family: inherit;
+      min-height: 44px; cursor: pointer;
+    }
+    #mix-inputs button[aria-pressed="true"], #mix-recipes button[aria-pressed="true"] { background: #ffe18a; }
+    #mix-inputs button:focus-visible, #mix-recipes button:focus-visible {
+      outline: 3px solid #2c4788; outline-offset: 2px;
+    }
+    .mix-swatch, #mix-result-chip {
+      display: inline-block; vertical-align: middle; width: 13px; height: 16px;
+      background: var(--mix-color); border: 1.5px solid var(--ink); border-radius: 4px;
+      margin-right: 3px;
+    }
+    #mix-result { display: flex; gap: 9px; align-items: center; text-align: left; min-height: 67px; padding: 7px 9px; border: 2px dashed #c9b48a; border-radius: 14px; background: #fffdf3; }
+    #mix-result-chip { width: 34px; height: 42px; flex: 0 0 34px; background: var(--mix-result, #fff8e6); border-width: 2px; border-radius: 9px 9px 6px 6px; box-shadow: inset -4px -5px rgba(58,42,34,0.12); }
+    #mix-result-perk { display: block; margin-top: 2px; font-size: 12px; }
+    .mix-panel h3 { font-size: 14px; margin: 10px 0 5px; }
+    .mix-panel .btn { max-width: 100%; }
+    #mix-recipes { display: grid; gap: 5px; margin-bottom: 10px; }
+    #mix-recipes button { display: flex; justify-content: space-between; gap: 7px; align-items: center; padding: 4px 8px; text-align: left; font-size: 12px; }
+    .recipe-state { white-space: nowrap; color: #5d473a; font-weight: 700; }
     @media (orientation: landscape) {
       .logo { margin-top: 16px; font-size: 32px; }
       .panel { margin-top: 16px; }
+      #field { width: calc(100% - var(--field-inset-right, 80px)); height: 100%; }
       #hud { right: 80px; }
-      #plan { right: 86px; }
       #dock {
         left: auto; top: 0; right: 0; bottom: 0; width: 80px;
         border-top: none; border-left: 2px solid var(--ink);
         padding: calc(6px + env(safe-area-inset-top, 0px)) calc(6px + env(safe-area-inset-right, 0px)) calc(6px + env(safe-area-inset-bottom, 0px)) 4px;
-        display: flex; flex-direction: column; justify-content: flex-end; gap: 4px;
+        display: flex; flex-direction: column; justify-content: safe flex-end; gap: 4px;
+        overflow-y: auto; touch-action: pan-y;
       }
       #tools { grid-template-columns: 1fr 1fr; }
       #draw-tools { grid-template-columns: 1fr; }
       #packets { grid-template-columns: 1fr !important; }
       #buddy-wrap { flex-direction: column; }
+      .mix-panel { margin: 12px auto; }
     }
   </style>
 </head>
@@ -533,6 +664,7 @@
         <h1 class="logo">Doodle<br>Defense</h1>
         <div class="tag">Draw the paths. Your doodles walk them.</div>
         <button class="btn" id="btn-play" data-testid="btn-play">Play</button>
+        <button class="btn mint" id="btn-mixer-menu" data-testid="btn-mixer-menu">Color Mixer · 0 ink</button>
         <button class="btn lavender" id="btn-endless" data-testid="btn-endless">Endless Sketch</button>
         <button class="btn mint" id="btn-how" data-testid="btn-how">How to play</button>
         <button class="btn lavender" id="btn-design" data-testid="btn-design">Design a doodle</button>
@@ -542,19 +674,109 @@
       <section id="screen-levels" class="screen" data-testid="screen-levels">
         <h1 class="logo" style="font-size:34px;margin-top:28px">Pick a page</h1>
         <div class="tag" id="levels-tag">Normal is on. A tight ink budget, so plan each line.</div>
+        <button class="btn mint" id="btn-mixer-levels" data-testid="btn-mixer-levels">Color Mixer · 0 ink</button>
+        <button class="btn lavender" id="btn-equipment-levels" data-testid="btn-equipment-levels">Pencil Case · 0 Erasers</button>
         <div id="level-list"></div>
         <button class="btn ghost" id="btn-levels-back" data-testid="btn-levels-back">Back</button>
       </section>
 
 
+      <section id="screen-mixer" class="screen" data-testid="screen-mixer">
+        <div class="panel mix-panel">
+          <h2>Color Mixer</h2>
+          <b id="mix-ink">0 Mixing Ink</b>
+          <p id="mix-progress"></p>
+          <div id="mix-inputs" role="group" aria-label="Pick two starter crayons">
+            <button type="button" data-color="red" aria-pressed="false"><span class="mix-swatch" style="--mix-color:var(--red)" aria-hidden="true"></span>Red</button>
+            <button type="button" data-color="blue" aria-pressed="false"><span class="mix-swatch" style="--mix-color:var(--blue)" aria-hidden="true"></span>Blue</button>
+            <button type="button" data-color="green" aria-pressed="false"><span class="mix-swatch" style="--mix-color:var(--green)" aria-hidden="true"></span>Green</button>
+          </div>
+          <div id="mix-result" aria-live="polite">
+            <span id="mix-result-chip" aria-hidden="true"></span>
+            <div><b id="mix-result-name">Pick two colors</b><span id="mix-result-perk"></span></div>
+          </div>
+          <p id="mix-status" role="status"></p>
+          <button class="btn mint" id="btn-mix-buy" disabled>Mix for 45 ink</button>
+          <h3>Recipe book</h3>
+          <div id="mix-recipes" aria-label="Recipes">
+            <button type="button" data-mix="purple" aria-pressed="false"><span>Red + Blue → Purple Blink</span><span class="recipe-state">45 ink</span></button>
+            <button type="button" data-mix="yellow" aria-pressed="false"><span>Red + Green → Yellow Zap</span><span class="recipe-state">45 ink</span></button>
+            <button type="button" data-mix="cyan" aria-pressed="false"><span>Blue + Green → Teal Frost</span><span class="recipe-state">45 ink</span></button>
+          </div>
+          <button class="btn ghost" id="btn-mixer-back">Back</button>
+        </div>
+      </section>
+
+      <section id="screen-equipment" class="screen" data-testid="screen-equipment">
+        <div class="panel equipment-panel">
+          <h2>Pencil Case</h2>
+          <b id="equipment-balance" data-testid="equipment-balance">0 Erasers</b>
+          <p class="equipment-intro">Win a level to earn an Eraser. Spend Erasers here to unlock drawing tools for good.</p>
+          <div class="equipment-card">
+            <b>Pen</b>
+            <span>Starter tool. Fine lines that cost the least ink.</span>
+          </div>
+          <div class="equipment-card">
+            <b>Brush</b>
+            <span>Thick, tougher strokes. Uses more drawing ink.</span>
+            <button class="btn lavender" id="btn-buy-brush" data-testid="btn-buy-brush" disabled>Unlock for 2 Erasers</button>
+          </div>
+          <div class="equipment-card">
+            <b>Highlighter</b>
+            <span>A wide tint that slows and reveals monsters. Fragile when chewed.</span>
+            <button class="btn lavender" id="btn-buy-highlighter" data-testid="btn-buy-highlighter" disabled>Unlock for 4 Erasers</button>
+          </div>
+          <p id="equipment-status" data-testid="equipment-status" role="status"></p>
+          <button class="btn ghost" id="btn-guide-equipment" data-testid="btn-guide-equipment">Compare drawing tools</button>
+          <button class="btn ghost" id="btn-equipment-back" data-testid="btn-equipment-back">Back</button>
+        </div>
+      </section>
+
       <section id="screen-loadout" class="screen" data-testid="screen-loadout">
         <div class="panel">
           <h2 id="loadout-title" data-testid="loadout-title">Pick your packets</h2>
+          <div class="page-brief">
+            <b>To pass</b>
+            <div id="loadout-objective" data-testid="loadout-objective"></div>
+            <span id="loadout-star-help" hidden>Draw a closed loop around each star to collect it. These are separate from your end-of-level rating.</span>
+            <span id="loadout-rally-help" hidden>New tool · Cross red lines, then use Rally to send doodles through the junction.</span>
+          </div>
           <p id="loadout-sub" data-testid="loadout-sub"></p>
           <div id="loadout-grid" data-testid="loadout-grid"></div>
           <button class="btn" id="btn-loadout-start" data-testid="btn-loadout-start">Start page</button>
+          <button class="btn ghost" id="btn-guide-loadout" data-testid="btn-guide-loadout">What do the packets do?</button>
           <button class="btn ghost" id="btn-loadout-design" data-testid="btn-loadout-design">Design a doodle</button>
           <button class="btn ghost" id="btn-loadout-back" data-testid="btn-loadout-back">Back</button>
+        </div>
+      </section>
+
+      <section id="screen-guide" class="screen" data-testid="screen-guide">
+        <div class="panel guide-panel">
+          <h2>Tool Guide</h2>
+          <div class="guide-tabs" role="group" aria-label="Tool guide categories">
+            <button type="button" id="guide-tab-colors" data-testid="guide-tab-colors" aria-pressed="true">Colors</button>
+            <button type="button" id="guide-tab-tips" data-testid="guide-tab-tips" aria-pressed="false">Drawing tools</button>
+            <button type="button" id="guide-tab-packets" data-testid="guide-tab-packets" aria-pressed="false">Packets</button>
+            <button type="button" id="guide-tab-combos" data-testid="guide-tab-combos" aria-pressed="false">Combos</button>
+          </div>
+          <div id="guide-body" tabindex="0" aria-label="Tool descriptions">
+            <div id="guide-list" class="clip-picks" data-testid="guide-list" role="group" aria-label="Choose a demo"></div>
+            <figure class="lesson-player">
+              <div id="guide-demo" data-testid="guide-demo"></div>
+              <figcaption>
+                <h3 id="guide-clip-title" data-testid="guide-clip-title"></h3>
+                <button type="button" class="lesson-replay" id="guide-demo-replay" data-testid="guide-demo-replay">↻ Replay</button>
+              </figcaption>
+            </figure>
+            <p id="guide-clip-caption" data-testid="guide-clip-caption"></p>
+            <details class="lesson-details" id="guide-details">
+              <summary>More details</summary>
+              <p class="guide-meta" id="guide-clip-meta"></p>
+              <p id="guide-clip-detail"></p>
+              <p><b>Try this</b> <span id="guide-clip-try"></span></p>
+            </details>
+          </div>
+          <button type="button" class="btn" id="btn-guide-back" data-testid="btn-guide-back">Back</button>
         </div>
       </section>
 
@@ -562,64 +784,32 @@
         <div class="panel">
           <h2>How to play</h2>
           <div class="codex" data-testid="codex">
-            <p>You draw the paths. Before each wave, read the <b>scouting preview</b>, draw your plan, then press <b>Start wave</b>. Ink is a tight budget and barely refills by itself, so plant <b>Inkwells</b> and tap the ink drops they make. Drawing mid-wave costs extra. On Normal, three leaks lose the page.</p>
-            <h3 data-testid="codex-colors">Colors</h3>
-            <ul>
-              <li data-testid="codex-blue"><span class="sw blue"></span><b>Blue: slow.</b> A cheap line that slows monsters. Also reveals sneaky ones.</li>
-              <li data-testid="codex-red"><span class="sw red"></span><b>Red: tickle.</b> Doodles hatch, run the line, and poke monsters. Costs more ink, but they move fast.</li>
-              <li data-testid="codex-green"><span class="sw green"></span><b>Green: wall.</b> Blocks monsters. They will chew through it, and armored or boss ones break it faster. Hoppers jump over walls.</li>
-              <li data-testid="codex-yellow"><span class="sw yellow"></span><b>Zap: shock.</b> Zaps nearby ground monsters, then fizzles after a few hits. Unlock it by beating the first boss.</li>
-              <li data-testid="codex-purple"><span class="sw purple"></span><b>Blink: swap.</b> Anyone who touches an end swaps to the other end. Unlock it by beating the second boss.</li>
-              <li data-testid="codex-eraser"><span class="sw eraser"></span><b>Eraser.</b> Rub out a line and get a little ink back.</li>
+            <figure class="lesson-player">
+              <div id="how-demo" data-testid="how-demo"></div>
+              <figcaption>
+                <h3>Your first defense</h3>
+                <button type="button" class="lesson-replay" id="how-demo-replay" data-testid="how-demo-replay">↻ Replay</button>
+              </figcaption>
+            </figure>
+            <ul class="quick-points">
+              <li><b>Draw red</b> to hatch defenders.</li>
+              <li><b>Tap Start</b> and keep the house standing.</li>
+              <li><b>Defeat monsters</b> to earn more drawing ink.</li>
             </ul>
-            <h3 data-testid="codex-combos">Combos and shapes</h3>
-            <ul>
-              <li><b>Blue × red = splash burst.</b> Hurts everything nearby, even flyers and sneaky ones.</li>
-              <li><b>Red × green = thorns.</b> Hurts ground monsters standing in it. Best against armored ones.</li>
-              <li><b>Green × blue = bouncy bush.</b> A springy patch that helps your doodles.</li>
-              <li><b>Triangle = launch pad.</b> Doodles on it fly at nearby monsters. This is how you hit flyers (splashes work too).</li>
-              <li><b>A loop</b> around a star grabs it. Loops also make doodles walk in a circle as guards.</li>
-            </ul>
-            <h3 data-testid="codex-tools">Drawing tools</h3>
-            <ul id="codex-tools-list">
-              <li data-testid="codex-tool-pen"><b>Pen</b> (cheap): a thin, precise line. Breaks easily.</li>
-              <li data-testid="codex-tool-brush"><b>Brush</b> (costly): a thick, sturdy stroke with a wider effect.</li>
-              <li data-testid="codex-tool-highlighter"><b>Highlighter</b> (medium): a wide translucent tint. Slows and reveals in its width, but monsters chew it fast.</li>
-            </ul>
-            <p>The tool applies on top of the crayon color (blue still slows, green still walls, and so on).</p>
-            <h3 data-testid="codex-defenders">Custom doodles</h3>
-            <p data-testid="codex-defenders-blurb">From the menu you can design a buddy: pick a color, face, size, a role (Poke, Slow, Mend, Gather, or Guard) and a trait or two. Then tap a drawn line to send them out. They patrol back and forth. Bigger or stronger choices cost more ink.</p>
-            <h3 data-testid="codex-components">Components (seed packets)</h3>
-            <p style="margin:0 0 6px">Before each page, pick a few packets. Tap a packet, then tap the page to place it. It costs ink, then recharges during a wave. Components fill, shoot or help on their own; ink drops fade, so tap them quickly. Red shading shows where monsters will chew.</p>
-            <ul id="codex-comps-list" data-testid="codex-comps-list"></ul>
-            <p style="margin:6px 0 8px">Any component touching a green line is fenced: it takes 40% less chewing. Monsters chew components they walk near, just like walls.</p>
-            <h3 data-testid="codex-monsters">Monsters and counters</h3>
-            <ul>
-              <li><b>Scribble:</b> basic walker. Your doodles poke it.</li>
-              <li><b>Hopper:</b> jumps green walls. Use tickles, blue, or thorns.</li>
-              <li><b>Eraser-bug:</b> eats your lines. Give it a short decoy to chew.</li>
-              <li><b>Splitter:</b> becomes two when hurt. Keep hitting both.</li>
-              <li><b>Sneaky:</b> stays hidden until it touches blue, a puddle, or a splash.</li>
-              <li><b>Armored:</b> tickles barely work. Use thorns, Zap, a splash, or a launch pad.</li>
-              <li><b>Healer:</b> mends others. Pop it first with a splash or thorns.</li>
-              <li><b>Flyer:</b> soars over lines and walls. Use a triangle launch pad or a splash.</li>
-              <li data-testid="codex-kind-tunneler"><b>Digger:</b> burrows under lines. Hit it with a splash, or poke it when it pops up.</li>
-              <li data-testid="codex-kind-thief"><b>Ink-nib:</b> steals ink drops. Collect them first, or poke it.</li>
-              <li data-testid="codex-kind-splatter"><b>Blotling:</b> leaves a no-draw blot when popped. Take it out early and away from your lines.</li>
-              <li data-testid="codex-kind-shielder"><b>Cover-bug:</b> shields nearby monsters. Pop the Cover-bug first.</li>
-              <li data-testid="codex-kind-dasher"><b>Zipper:</b> a tiny fast swarm. Slow them with blue, glue, or a splash.</li>
-              <li data-testid="codex-kind-mimic"><b>Drop-faker:</b> disguises as an ink drop. Don't tap it — poke it.</li>
-              <li><b>Bosses</b> (Big Smudge, Nibblewick, Hidey Storm) change tactics as they get hurt.</li>
-            </ul>
-            <h3 data-testid="codex-hazards">Page hazards</h3>
-            <ul>
-              <li><b>Puddle:</b> a line through it makes swimmers, and monsters slow down in the water.</li>
-              <li><b>Coffee stain:</b> drawing here costs double ink.</li>
-              <li><b>Ink blot:</b> a no-draw zone. Your line stops if it hits one.</li>
-              <li><b>Fold:</b> the folded part of the page cuts your line.</li>
-              <li><b>Wind:</b> pushes your line as you draw.</li>
-            </ul>
-            <p>Stars: clear the page, let nothing reach the house, and keep 35% of your ink after using a combo or launch pad. Clear Hard to unlock <b>Nightmare</b>.</p>
+            <button class="btn mint" id="btn-guide-how" data-testid="btn-guide-how">Watch tool demos</button>
+            <details class="lesson-details">
+              <summary>Bestiary and extra rules</summary>
+              <h3 data-testid="codex-monsters">Bestiary</h3>
+              <ul id="codex-monster-list"></ul>
+              <h3>Chapter bosses</h3>
+              <ul id="codex-boss-list"></ul>
+              <h3>Extras</h3>
+              <ul>
+                <li>On star pages, draw a closed loop around each board star and survive all waves.</li>
+                <li>First clears earn Mixing Ink for colors. Every win earns an Eraser for drawing tools.</li>
+                <li>Puddles make swimmers. Coffee stains cost extra ink. Blots and folds can stop a line.</li>
+              </ul>
+            </details>
           </div>
           <button class="btn" id="btn-how-back" data-testid="btn-how-back">Got it</button>
         </div>
@@ -672,7 +862,7 @@
               <button data-val="off">Off</button>
             </div>
           </div>
-          <div class="set-row">Tips
+          <div class="set-row" id="tutorial-setting">First-level guide
             <div class="seg" id="set-tips">
               <button data-val="on" class="on" data-testid="tips-on">On</button>
               <button data-val="off" data-testid="tips-off">Off</button>
@@ -696,16 +886,14 @@
               <button id="btn-fs" data-testid="btn-fs" aria-label="Full screen">⛶</button>
               <button id="btn-pause" data-testid="btn-pause" aria-label="Pause">❚❚</button>
             </div>
+            <div id="page-objective" data-testid="page-objective"></div>
+            <div id="ambush-alert" data-testid="ambush-alert" role="status" hidden></div>
+            <div id="plan" data-testid="plan-panel" hidden>
+              <div id="plan-text" data-testid="plan-text"></div>
+              <button class="btn" id="btn-start-wave" data-testid="btn-start-wave">Start</button>
+            </div>
           </header>
           <div id="hint" data-testid="hint"></div>
-          <div id="callout" data-testid="callout" hidden>
-            <div id="callout-text" data-testid="callout-text"></div>
-            <button class="btn" id="btn-callout-ok" data-testid="btn-callout-ok">Got it</button>
-          </div>
-          <div id="plan" data-testid="plan-panel" hidden>
-            <div id="plan-text" data-testid="plan-text"></div>
-            <button class="btn" id="btn-start-wave" data-testid="btn-start-wave">Start</button>
-          </div>
           <div id="ink-wrap">
             <div id="ink-label"><span id="ink-title" data-testid="ink-title">Ink</span></div>
           </div>
@@ -719,30 +907,44 @@
           <div id="packets" data-testid="packets" hidden></div>
           <div id="buddy-wrap" data-testid="buddy-wrap">
             <button id="btn-buddy" data-testid="btn-buddy">Buddy</button>
+            <button id="btn-rally" data-testid="btn-rally" aria-label="Rally Pin" aria-pressed="false" hidden><span aria-hidden="true">⚑</span> Rally</button>
             <button id="btn-design-mini" data-testid="btn-design-mini">Edit</button>
+            <button id="btn-guide-play" data-testid="btn-guide-play" aria-label="Tool Guide">Guide</button>
           </div>
-          <div id="draw-tools" data-testid="draw-tools">
-            <button class="dtool sel" data-draw="pen" data-testid="draw-pen"><span class="ic">✎</span><span>Pen</span></button>
-            <button class="dtool" data-draw="brush" data-testid="draw-brush"><span class="ic">🖌</span><span>Brush</span></button>
-            <button class="dtool" data-draw="highlighter" data-testid="draw-highlighter"><span class="ic">🖍</span><span>Highlight</span></button>
+          <div id="draw-tools" data-testid="draw-tools" role="group" aria-label="Drawing tools">
+            <button class="dtool sel" data-draw="pen" data-testid="draw-pen" aria-pressed="true"><span class="ic" aria-hidden="true">✎</span><span>Pen</span></button>
+            <button class="dtool" data-draw="brush" data-testid="draw-brush" aria-pressed="false" hidden disabled><span class="ic" aria-hidden="true">🖌</span><span>Brush</span></button>
+            <button class="dtool" data-draw="highlighter" data-testid="draw-highlighter" aria-pressed="false" hidden disabled><span class="ic" aria-hidden="true">🖍</span><span>Highlighter</span></button>
           </div>
           <div id="crayon-legend" class="visually-hidden" data-testid="crayon-legend">Blue: slow — a cheap line that slows monsters</div>
           <div id="tools">
             <button class="tool blue sel" data-tool="blue" data-testid="tool-blue"><span class="swatch"></span><span class="nm">Blue</span><span class="fx">Slow</span></button>
-            <button class="tool red" data-tool="red" data-testid="tool-red"><span class="swatch"></span><span class="nm">Red</span><span class="fx">Tickle</span></button>
+            <button class="tool red" data-tool="red" data-testid="tool-red"><span class="swatch"></span><span class="nm">Red</span><span class="fx">Attack</span></button>
             <button class="tool green" data-tool="green" data-testid="tool-green"><span class="swatch"></span><span class="nm">Green</span><span class="fx">Wall</span></button>
-            <button class="tool yellow lock" data-tool="yellow" data-testid="tool-yellow"><span class="swatch"></span><span class="nm">Zap</span><span class="fx">Shock</span></button>
-            <button class="tool purple lock" data-tool="purple" data-testid="tool-purple"><span class="swatch"></span><span class="nm">Blink</span><span class="fx">Swap</span></button>
+            <button class="tool yellow" hidden disabled data-tool="yellow" data-testid="tool-yellow"><span class="swatch"></span><span class="nm">Zap</span><span class="fx">Shock</span></button>
+            <button class="tool purple" hidden disabled data-tool="purple" data-testid="tool-purple"><span class="swatch"></span><span class="nm">Blink</span><span class="fx">Swap</span></button>
+            <button class="tool cyan" hidden disabled data-tool="cyan" data-testid="tool-cyan"><span class="swatch"></span><span class="nm">Frost</span><span class="fx">Chill</span></button>
             <button class="tool eraser" data-tool="eraser" data-testid="tool-eraser"><span class="swatch"></span><span class="nm">Eraser</span><span class="fx">Erase</span></button>
           </div>
         </div>
       </section>
+
+      <div id="modal-intro" class="modal" role="dialog" aria-modal="true" aria-labelledby="intro-name" aria-describedby="intro-text" data-testid="modal-intro">
+        <div class="panel intro-panel">
+          <div id="intro-type">New monster</div>
+          <div id="intro-art" aria-hidden="true"></div>
+          <h2 id="intro-name"></h2>
+          <p id="intro-text"></p>
+          <button class="btn" id="btn-intro-continue" data-testid="btn-intro-continue">Continue</button>
+        </div>
+      </div>
 
       <div id="modal-pause" class="modal" data-testid="modal-pause">
         <div class="panel">
           <h2>Paused</h2>
           <p>The crayons are taking a rest.</p>
           <button class="btn" id="btn-resume" data-testid="btn-resume">Keep drawing</button>
+          <button class="btn lavender" id="btn-restart" data-testid="btn-restart">Restart level</button>
           <button class="btn mint" id="btn-pause-how" data-testid="btn-pause-how">How to play</button>
           <button class="btn ghost" id="btn-quit" data-testid="btn-quit">Back to pages</button>
         </div>
@@ -755,14 +957,19 @@
           <p id="end-blurb" data-testid="end-blurb"></p>
           <ul id="star-rules" data-testid="star-rules" hidden></ul>
           <p id="unlock-note" data-testid="unlock-note" hidden></p>
-          <button class="btn" id="btn-again" data-testid="btn-again">Draw again</button>
+          <button class="btn lavender" id="btn-end-equipment" data-testid="btn-end-equipment" hidden>Pencil Case</button>
+          <button class="btn mint" id="btn-end-mix" hidden>Mix a new color</button>
+          <button class="btn" id="btn-again" data-testid="btn-again">Restart level</button>
           <button class="btn ghost" id="btn-end-levels" data-testid="btn-end-levels">Pages</button>
         </div>
       </div>
     </div>
   </div>
-  <script src="src/audio.js"></script>
-  <script src="src/levels.js"></script>
-  <script src="src/game.js"></script>
+  <script src="src/audio.js?v=ambush-1"></script>
+  <script src="src/levels.js?v=early-ramp-1"></script>
+  <script src="src/monsters.js?v=pencil-1"></script>
+  <script src="src/patrol.js?v=rally-pin-1"></script>
+  <script src="src/demos.js?v=rally-pin-1"></script>
+  <script src="src/game.js?v=rally-pin-1"></script>
 </body>
 </html>
